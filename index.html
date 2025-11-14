@@ -1,206 +1,378 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Calibrate & Download — Color Assistant</title>
-<style>
-  :root{--accent:#12b886;--bg:#0f1115;--card:#0f1317}
-  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#fff;display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px}
-  .stage{width:100%;max-width:900px;position:relative}
-  video, canvas{width:100%;border-radius:12px; display:block; background:#000}
-  .overlay{position:absolute;inset:0;pointer-events:none}
-  .refbox{position:absolute;left:50%;transform:translateX(-50%);bottom:10%;width:22%;height:12%;border-radius:10px;border:3px dashed rgba(255,255,255,0.65)}
-  .faceoval{position:absolute;left:50%;transform:translateX(-50%);top:9%;width:58%;height:64%;border-radius:40%;border:3px solid rgba(255,255,255,0.08)}
-  .controls{display:flex;gap:8px;justify-content:center;margin-top:6px}
-  button{padding:10px 14px;border-radius:10px;border:0;background:var(--accent);color:#032; font-weight:600;cursor:pointer}
-  .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.06); color:#ddd}
-  .status{display:flex;gap:12px;justify-content:center;margin-top:6px;font-size:14px;color:#cfe}
-  .resultRow{display:flex;gap:8px;margin-top:8px;max-width:900px;width:100%}
-  .previewCard{flex:1; background: #0b0c0e; padding:8px;border-radius:8px}
-  .swatch{height:56px;border-radius:8px;border:1px solid rgba(255,255,255,0.04)}
-  .countdown{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);font-size:72px;color:rgba(255,255,255,0.9);font-weight:800;display:none}
-  small.hint{color:#9fb}
-</style>
+    <title>Color Analysis</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        /* Modern, clean design */
+        body { 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        #video-container {
+            position: relative;
+            max-width: 640px;
+            margin: 20px auto;
+        }
+        video, canvas {
+            width: 100%;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        /* Face oval overlay */
+        .face-guide {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 50%;
+            border: 3px solid #00ff88;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+    </style>
 </head>
 <body>
-  <div class="stage">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="canvas" style="display:none"></canvas>
-    <div class="overlay">
-      <div class="faceoval"></div>
-      <div class="refbox" id="refBox"></div>
-      <div class="countdown" id="count">3</div>
+    <div id="app">
+        <div id="video-container">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+            <div class="face-guide"></div>
+        </div>
+        
+        <div id="instructions">
+            Hold white post-it in view and tap it
+        </div>
+        
+        <div id="countdown"></div>
+        
+        <div id="results" style="display:none;">
+            <img id="corrected-image" />
+            <button id="download">📥 Download Corrected Image</button>
+            <div id="colors"></div>
+        </div>
     </div>
-  </div>
 
-  <div class="controls">
-    <button id="startBtn">Start Camera</button>
-    <button class="btn-ghost" id="calBtn">Tap to Calibrate</button>
-    <button id="captureBtn">Capture</button>
-    <button id="downloadBtn" style="display:none">Download Calibrated</button>
-  </div>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
+    
+    <script>
+        // ═══════════════════════════════════════
+// STEP 1: Camera Setup
+// ═══════════════════════════════════════
 
-  <div class="status" id="status">
-    <div id="refStatus">Reference: —</div>
-    <div id="lockStatus">Lock: —</div>
-    <div id="quality">Quality: —</div>
-  </div>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
 
-  <div class="resultRow" id="results" style="display:none">
-    <div class="previewCard">
-      <div style="font-size:13px;color:#9bf">Original</div>
-      <img id="origImg" style="width:100%;border-radius:8px;margin-top:6px" />
-    </div>
-    <div class="previewCard">
-      <div style="font-size:13px;color:#9bf">Calibrated</div>
-      <img id="calImg" style="width:100%;border-radius:8px;margin-top:6px" />
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <div style="flex:1"><div style="font-size:12px;color:#9bf">Sampled White</div><div id="whiteSw" class="swatch"></div></div>
-        <div style="flex:1"><div style="font-size:12px;color:#9bf">Skin Sample</div><div id="skinSw" class="swatch"></div></div>
-      </div>
-    </div>
-  </div>
+let referenceLocation = null;
+let referenceColor = null;
 
-<script>
-(async()=>{
-  const video = document.getElementById('video'), canvas = document.getElementById('canvas');
-  const startBtn = document.getElementById('startBtn'), calBtn = document.getElementById('calBtn'), captureBtn = document.getElementById('captureBtn'), downloadBtn = document.getElementById('downloadBtn');
-  const refBox = document.getElementById('refBox'), countEl = document.getElementById('count');
-  const refStatus = document.getElementById('refStatus'), lockStatus = document.getElementById('lockStatus'), quality = document.getElementById('quality');
-  const results = document.getElementById('results'), origImg = document.getElementById('origImg'), calImg = document.getElementById('calImg');
-  const whiteSw = document.getElementById('whiteSw'), skinSw = document.getElementById('skinSw');
-  let stream=null, w=640,h=480, gains=[1,1,1], lastFrame=null, lastSample=null;
+async function startCamera() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+        }
+    });
+    
+    video.srcObject = stream;
+    video.play();
+    
+    // Set canvas size to match video
+    video.onloadedmetadata = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+    };
+}
 
-  startBtn.onclick = async () => {
-    try{
-      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:1280}}, audio:false});
-      video.srcObject = stream;
-      await video.play();
-      w = video.videoWidth || 640; h = video.videoHeight || 480;
-      canvas.width = w; canvas.height = h;
-      refStatus.textContent = 'Reference: waiting';
-      lockStatus.textContent = 'Lock: ready';
-      quality.textContent = 'Quality: preview';
-      startBtn.disabled = true;
-    }catch(e){ alert('Camera error: '+e) }
-  };
+// ═══════════════════════════════════════
+// STEP 2: User Taps White Reference
+// ═══════════════════════════════════════
 
-  function sampleBox(imgd, bx,by,bw,bh,step=3){
-    const data = imgd.data, W = imgd.width, H = imgd.height;
-    const sx=Math.max(0,Math.floor(bx)), sy=Math.max(0,Math.floor(by)), ex=Math.min(W,Math.floor(bx+bw)), ey=Math.min(H,Math.floor(by+bh));
-    const px=[];
-    for(let y=sy;y<ey;y+=step){
-      for(let x=sx;x<ex;x+=step){
-        const i=(y*W+x)*4; px.push([data[i],data[i+1],data[i+2]]);
-      }
-    }
-    return px;
-  }
-  function medianRGB(px){
-    if(!px.length) return [0,0,0];
-    const r=px.map(p=>p[0]).sort((a,b)=>a-b), g=px.map(p=>p[1]).sort((a,b)=>a-b), b=px.map(p=>p[2]).sort((a,b)=>a-b);
-    const m=Math.floor(px.length/2); return [r[m],g[m],b[m]];
-  }
-
-  calBtn.onclick = () => {
-    if(!video.srcObject){ alert('Start camera first'); return; }
-    const vbox = video.getBoundingClientRect(), bbox = refBox.getBoundingClientRect();
-    const scale = w / vbox.width;
-    const bx = (bbox.left - vbox.left)*scale, by=(bbox.top-vbox.top)*scale, bw=bbox.width*scale, bh=bbox.height*scale;
-    const ctx = canvas.getContext('2d'); ctx.drawImage(video,0,0,w,h);
-    const id = ctx.getImageData(0,0,w,h);
-    const px = sampleBox(id, bx,by,bw,bh,2);
-    if(!px.length){ refStatus.textContent='Reference: none'; return; }
-    const med = medianRGB(px);
-    // target white ~ 235 (not full 255 to avoid clipping)
-    const T = 235;
-    gains = [T/(med[0]||1), T/(med[1]||1), T/(med[2]||1)];
-    lastSample = {med, gains};
-    refStatus.textContent = `Reference: sampled [${Math.round(med[0])},${Math.round(med[1])},${Math.round(med[2])}]`;
-    whiteSw.style.background = `rgb(${med.map(v=>Math.round(v)).join(',')})`;
-    lockStatus.textContent = 'Lock: simulated (preview adjusted)';
-  };
-
-  // apply gains to ImageData copy (non destructive)
-  function applyGainsToImageData(imgd, g){
-    const d = imgd.data;
-    for(let i=0;i<d.length;i+=4){
-      d[i] = Math.max(0,Math.min(255, Math.round(d[i]*g[0])));
-      d[i+1] = Math.max(0,Math.min(255, Math.round(d[i+1]*g[1])));
-      d[i+2] = Math.max(0,Math.min(255, Math.round(d[i+2]*g[2])));
-    }
-    return imgd;
-  }
-
-  function drawPreviewToCanvas(){
-    if(!video.srcObject) return;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video,0,0,w,h);
-    if(gains) {
-      let id = ctx.getImageData(0,0,w,h);
-      id = applyGainsToImageData(id,gains);
-      ctx.putImageData(id,0,0);
-    }
-    lastFrame = ctx.getImageData(0,0,w,h);
-    requestAnimationFrame(drawPreviewToCanvas);
-  }
-
-  // start live simulated preview adjustments once camera is started
-  video.addEventListener('play', ()=>{ requestAnimationFrame(drawPreviewToCanvas); });
-
-  // capture flow with countdown
-  captureBtn.onclick = async () => {
-    if(!video.srcObject) { alert('Start camera first'); return; }
-    // countdown 3..1
-    countEl.style.display='block'; countEl.textContent='3';
-    await new Promise(r=>setTimeout(r,550)); countEl.textContent='2';
-    await new Promise(r=>setTimeout(r,550)); countEl.textContent='1';
-    await new Promise(r=>setTimeout(r,450));
-    countEl.style.display='none';
-
-    // final capture from video frame (we use canvas)
-    const ctx = canvas.getContext('2d'); ctx.drawImage(video,0,0,w,h);
-    let orig = ctx.getImageData(0,0,w,h);
-    // store original png
-    const origBlob = await new Promise(res=>canvas.toBlob(res,'image/jpeg',0.95));
-    origImg.src = URL.createObjectURL(origBlob);
-
-    // apply post-shot correction using sampled reference if exists
-    if(lastSample){
-      // re-sample white in final frame area (in case moved)
-      const vbox = video.getBoundingClientRect(), bbox = refBox.getBoundingClientRect();
-      const scale = w / vbox.width;
-      const bx = (bbox.left - vbox.left)*scale, by=(bbox.top-vbox.top)*scale, bw=bbox.width*scale, bh=bbox.height*scale;
-      const id = ctx.getImageData(0,0,w,h);
-      const px2 = sampleBox(id, bx,by,bw,bh,2);
-      const med2 = medianRGB(px2);
-      // compute final gains mapping measured->target (target 235)
-      const T=235;
-      const finalGains = [T/(med2[0]||1), T/(med2[1]||1), T/(med2[2]||1)];
-      // apply final gains
-      let corrected = ctx.getImageData(0,0,w,h);
-      corrected = applyGainsToImageData(corrected, finalGains);
-      ctx.putImageData(corrected,0,0);
-      // create blob for download
-      const calBlob = await new Promise(res=>canvas.toBlob(res,'image/jpeg',0.95));
-      calImg.src = URL.createObjectURL(calBlob);
-      downloadBtn.style.display = 'inline-block';
-      downloadBtn.onclick = ()=>{ const a=document.createElement('a'); a.href = URL.createObjectURL(calBlob); a.download='calibrated.jpg'; a.click(); };
-      // sample a skin patch (cheek approximate)
-      // naive cheek location relative to face oval center: center +/- offsets. We'll just pick moderate coords
-      const sampleX = Math.floor(w*0.5), sampleY = Math.floor(h*0.55);
-      const skinPx = sampleBox(corrected, sampleX-20, sampleY-20,40,40,2);
-      const skinMed = medianRGB(skinPx);
-      skinSw.style.background = `rgb(${skinMed.map(v=>Math.round(v)).join(',')})`;
-      quality.textContent = 'Quality: calibrated';
-      results.style.display = 'flex';
+video.addEventListener('click', (e) => {
+    if (referenceLocation) return; // Already locked
+    
+    const rect = video.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (video.videoWidth / rect.width);
+    const y = (e.clientY - rect.top) * (video.videoHeight / rect.height);
+    
+    // Sample 50x50 pixel area around tap
+    ctx.drawImage(video, 0, 0);
+    const imageData = ctx.getImageData(x - 25, y - 25, 50, 50);
+    
+    // Get average color of tapped area
+    referenceColor = getAverageColor(imageData);
+    
+    // Validate it's actually white-ish
+    if (isValidWhite(referenceColor)) {
+        referenceLocation = { x, y };
+        
+        // Try to lock camera settings (might not work in browser)
+        tryLockCameraSettings(referenceColor);
+        
+        // Show countdown
+        startCountdown();
     } else {
-      alert('No reference sampled. Press "Tap to Calibrate" first while white patch in ref box.');
+        alert('Please tap on a white surface!');
     }
-  };
+});
 
-})();
-</script>
+function getAverageColor(imageData) {
+    const data = imageData.data;
+    let r = 0, g = 0, b = 0, count = 0;
+    
+    for (let i = 0; i < data.length; i += 4) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        count++;
+    }
+    
+    return {
+        r: r / count,
+        g: g / count,
+        b: b / count
+    };
+}
+
+function isValidWhite(color) {
+    // Check if color is bright and neutral
+    const brightness = (color.r + color.g + color.b) / 3;
+    const variance = Math.max(
+        Math.abs(color.r - brightness),
+        Math.abs(color.g - brightness),
+        Math.abs(color.b - brightness)
+    );
+    
+    return brightness > 180 && variance < 30;
+}
+
+// ═══════════════════════════════════════
+// STEP 3: Countdown and Capture
+// ═══════════════════════════════════════
+
+function startCountdown() {
+    const countdownEl = document.getElementById('countdown');
+    let count = 3;
+    
+    const interval = setInterval(() => {
+        countdownEl.textContent = count;
+        countdownEl.style.fontSize = '100px';
+        
+        if (count === 0) {
+            clearInterval(interval);
+            capturePhoto();
+        }
+        count--;
+    }, 1000);
+}
+
+function capturePhoto() {
+    // Capture current frame with reference visible
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Get image data for processing
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // Process the image
+    processImage(imageData);
+}
+
+// ═══════════════════════════════════════
+// STEP 4: Color Correction Using Reference
+// ═══════════════════════════════════════
+
+function processImage(imageData) {
+    // Find the white reference in the image
+    const referenceInImage = findReferenceInImage(imageData, referenceLocation);
+    
+    if (!referenceInImage) {
+        alert('Reference not found in photo. Please try again.');
+        return;
+    }
+    
+    // Calculate color correction
+    const correction = calculateCorrection(referenceInImage);
+    
+    // Apply correction to entire image
+    const correctedImageData = applyCorrection(imageData, correction);
+    
+    // Draw corrected image
+    ctx.putImageData(correctedImageData, 0, 0);
+    
+    // Convert to downloadable image
+    const correctedImage = canvas.toDataURL('image/jpeg', 0.95);
+    
+    // Extract face colors from corrected image
+    extractFaceColors(correctedImageData).then(colors => {
+        showResults(correctedImage, colors);
+    });
+}
+
+function findReferenceInImage(imageData, location) {
+    // Sample area around where user tapped
+    const x = Math.floor(location.x);
+    const y = Math.floor(location.y);
+    const size = 50;
+    
+    const data = imageData.data;
+    const width = imageData.width;
+    
+    let r = 0, g = 0, b = 0, count = 0;
+    
+    for (let dy = -size/2; dy < size/2; dy++) {
+        for (let dx = -size/2; dx < size/2; dx++) {
+            const px = x + dx;
+            const py = y + dy;
+            if (px >= 0 && px < width && py >= 0 && py < imageData.height) {
+                const i = (py * width + px) * 4;
+                r += data[i];
+                g += data[i + 1];
+                b += data[i + 2];
+                count++;
+            }
+        }
+    }
+    
+    return {
+        r: r / count,
+        g: g / count,
+        b: b / count
+    };
+}
+
+function calculateCorrection(measuredWhite) {
+    // Target: Pure white (255, 255, 255)
+    // Measured: What the camera actually captured
+    
+    // Calculate per-channel gains
+    const targetWhite = 255;
+    
+    return {
+        rGain: targetWhite / measuredWhite.r,
+        gGain: targetWhite / measuredWhite.g,
+        bGain: targetWhite / measuredWhite.b
+    };
+}
+
+function applyCorrection(imageData, correction) {
+    const corrected = ctx.createImageData(imageData.width, imageData.height);
+    const src = imageData.data;
+    const dst = corrected.data;
+    
+    for (let i = 0; i < src.length; i += 4) {
+        // Apply gains with clamping
+        dst[i]     = Math.min(255, Math.max(0, src[i] * correction.rGain));
+        dst[i + 1] = Math.min(255, Math.max(0, src[i + 1] * correction.gGain));
+        dst[i + 2] = Math.min(255, Math.max(0, src[i + 2] * correction.bGain));
+        dst[i + 3] = src[i + 3]; // Alpha unchanged
+    }
+    
+    return corrected;
+}
+
+// ═══════════════════════════════════════
+// STEP 5: Face Color Extraction
+// ═══════════════════════════════════════
+
+async function extractFaceColors(imageData) {
+    // Load face segmentation model
+    const bodyPix = await bodySegmentation.createSegmenter(
+        bodySegmentation.SupportedModels.BodyPix
+    );
+    
+    // Create image from imageData
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = imageData.width;
+    tempCanvas.height = imageData.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.putImageData(imageData, 0, 0);
+    
+    // Segment the image
+    const segmentation = await bodyPix.segmentPerson(tempCanvas);
+    
+    // Extract colors from face regions
+    const colors = {
+        skin: extractRegionColor(imageData, segmentation, 'face'),
+        hair: extractRegionColor(imageData, segmentation, 'hair'),
+        // eyes: more complex, needs eye detection
+    };
+    
+    return colors;
+}
+
+function extractRegionColor(imageData, segmentation, region) {
+    // Sample multiple pixels from region
+    // Remove outliers
+    // Return median color
+    
+    // Simplified version:
+    const data = imageData.data;
+    const mask = segmentation.data;
+    
+    let r = 0, g = 0, b = 0, count = 0;
+    
+    for (let i = 0; i < mask.length; i++) {
+        if (mask[i] === 1) { // Person pixel
+            const idx = i * 4;
+            r += data[idx];
+            g += data[idx + 1];
+            b += data[idx + 2];
+            count++;
+        }
+    }
+    
+    return {
+        r: Math.round(r / count),
+        g: Math.round(g / count),
+        b: Math.round(b / count)
+    };
+}
+
+// ═══════════════════════════════════════
+// STEP 6: Show Results
+// ═══════════════════════════════════════
+
+function showResults(correctedImage, colors) {
+    document.getElementById('video-container').style.display = 'none';
+    document.getElementById('results').style.display = 'block';
+    
+    // Show corrected image
+    const img = document.getElementById('corrected-image');
+    img.src = correctedImage;
+    
+    // Show color swatches
+    const colorsDiv = document.getElementById('colors');
+    colorsDiv.innerHTML = `
+        <div class="color-result">
+            <div class="swatch" style="background: rgb(${colors.skin.r}, ${colors.skin.g}, ${colors.skin.b})"></div>
+            <span>Skin Tone</span>
+        </div>
+        <div class="color-result">
+            <div class="swatch" style="background: rgb(${colors.hair.r}, ${colors.hair.g}, ${colors.hair.b})"></div>
+            <span>Hair Color</span>
+        </div>
+    `;
+    
+    // Download button
+    document.getElementById('download').onclick = () => {
+        const link = document.createElement('a');
+        link.download = 'color-corrected.jpg';
+        link.href = correctedImage;
+        link.click();
+    };
+}
+
+// ═══════════════════════════════════════
+// START THE APP
+// ═══════════════════════════════════════
+
+startCamera();
+    </script>
 </body>
 </html>
