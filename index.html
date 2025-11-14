@@ -1,378 +1,754 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Color Analysis</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Color Analysis</title>
     <style>
-        /* Modern, clean design */
-        body { 
-            margin: 0; 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        #video-container {
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            color: #fff;
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+        
+        .video-section, .results-section {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .video-container {
             position: relative;
-            max-width: 640px;
-            margin: 20px auto;
+            max-width: 800px;
+            margin: 0 auto;
         }
+        
         video, canvas {
             width: 100%;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            display: block;
         }
-        /* Face oval overlay */
+        
         .face-guide {
             position: absolute;
-            top: 20%;
+            top: 15%;
             left: 50%;
             transform: translateX(-50%);
-            width: 60%;
-            height: 50%;
-            border: 3px solid #00ff88;
+            width: 55%;
+            height: 65%;
+            border: 3px solid #00ff95;
             border-radius: 50%;
             pointer-events: none;
+            box-shadow: 0 0 20px rgba(0, 255, 149, 0.5);
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #00b09b, #96c93d);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(1px);
+        }
+        
+        button.secondary {
+            background: linear-gradient(135deg, #8e2de2, #4a00e0);
+        }
+        
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .instructions {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 1.1rem;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+        }
+        
+        .countdown {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8rem;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 0 20px rgba(0, 255, 149, 0.8);
+            z-index: 100;
+            display: none;
+        }
+        
+        .results-section {
+            display: none;
+        }
+        
+        .results-title {
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.8rem;
+        }
+        
+        .comparison-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        
+        .image-container {
+            flex: 1;
+            min-width: 300px;
+            text-align: center;
+        }
+        
+        .image-container h3 {
+            margin-bottom: 10px;
+            font-size: 1.3rem;
+        }
+        
+        .corrected-image, .original-image {
+            width: 100%;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+        
+        .color-results {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        .color-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 15px;
+            min-width: 150px;
+        }
+        
+        .color-swatch {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin-bottom: 10px;
+            border: 3px solid white;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .color-value {
+            font-family: monospace;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 5px 10px;
+            border-radius: 5px;
+            margin-top: 5px;
+        }
+        
+        .white-reference-marker {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid #ff0000;
+            pointer-events: none;
+            display: none;
+        }
+        
+        .status-message {
+            text-align: center;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        
+        .success {
+            background: rgba(0, 255, 0, 0.2);
+            color: #90ff90;
+        }
+        
+        .error {
+            background: rgba(255, 0, 0, 0.2);
+            color: #ff9090;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .video-container {
+                max-width: 100%;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            button {
+                width: 100%;
+                max-width: 300px;
+            }
+            
+            .comparison-container {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
 <body>
-    <div id="app">
-        <div id="video-container">
-            <video id="video" autoplay playsinline></video>
-            <canvas id="canvas"></canvas>
-            <div class="face-guide"></div>
-        </div>
+    <div class="container">
+        <header>
+            <h1>Professional Color Analysis</h1>
+            <p class="subtitle">Capture true-to-life colors with white balance calibration</p>
+        </header>
         
-        <div id="instructions">
-            Hold white post-it in view and tap it
-        </div>
-        
-        <div id="countdown"></div>
-        
-        <div id="results" style="display:none;">
-            <img id="corrected-image" />
-            <button id="download">📥 Download Corrected Image</button>
-            <div id="colors"></div>
+        <div class="app-container">
+            <section class="video-section">
+                <div class="video-container">
+                    <video id="video" autoplay playsinline></video>
+                    <canvas id="canvas"></canvas>
+                    <div class="face-guide"></div>
+                    <div id="white-reference-marker" class="white-reference-marker"></div>
+                </div>
+                
+                <div id="instructions" class="instructions">
+                    <p>Step 1: Hold a white reference (paper, card, or post-it) in the frame</p>
+                    <p>Step 2: Tap on the white reference to calibrate colors</p>
+                    <p>Step 3: Position your face in the oval and click "Capture"</p>
+                </div>
+                
+                <div id="status-message" class="status-message"></div>
+                
+                <div class="controls">
+                    <button id="calibrate-btn">Tap White Reference to Calibrate</button>
+                    <button id="capture-btn" disabled>Capture Photo</button>
+                    <button id="reset-btn" class="secondary">Reset</button>
+                </div>
+            </section>
+            
+            <div id="countdown" class="countdown"></div>
+            
+            <section id="results-section" class="results-section">
+                <h2 class="results-title">Color Analysis Results</h2>
+                
+                <div class="comparison-container">
+                    <div class="image-container">
+                        <h3>Original Photo</h3>
+                        <img id="original-image" class="original-image" />
+                    </div>
+                    
+                    <div class="image-container">
+                        <h3>Color Corrected</h3>
+                        <img id="corrected-image" class="corrected-image" />
+                    </div>
+                </div>
+                
+                <div class="color-results">
+                    <div class="color-item">
+                        <div id="skin-swatch" class="color-swatch"></div>
+                        <span>Skin Tone</span>
+                        <div id="skin-value" class="color-value">RGB(0, 0, 0)</div>
+                    </div>
+                    
+                    <div class="color-item">
+                        <div id="hair-swatch" class="color-swatch"></div>
+                        <span>Hair Color</span>
+                        <div id="hair-value" class="color-value">RGB(0, 0, 0)</div>
+                    </div>
+                    
+                    <div class="color-item">
+                        <div id="lip-swatch" class="color-swatch"></div>
+                        <span>Lip Color</span>
+                        <div id="lip-value" class="color-value">RGB(0, 0, 0)</div>
+                    </div>
+                    
+                    <div class="color-item">
+                        <div id="eye-swatch" class="color-swatch"></div>
+                        <span>Eye Color</span>
+                        <div id="eye-value" class="color-value">RGB(0, 0, 0)</div>
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <button id="download-btn">Download Corrected Image</button>
+                    <button id="new-analysis-btn" class="secondary">New Analysis</button>
+                </div>
+            </section>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
-    
     <script>
-        // ═══════════════════════════════════════
-// STEP 1: Camera Setup
-// ═══════════════════════════════════════
-
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-
-let referenceLocation = null;
-let referenceColor = null;
-
-async function startCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+        // DOM Elements
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const calibrateBtn = document.getElementById('calibrate-btn');
+        const captureBtn = document.getElementById('capture-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const newAnalysisBtn = document.getElementById('new-analysis-btn');
+        const countdownEl = document.getElementById('countdown');
+        const instructionsEl = document.getElementById('instructions');
+        const statusMessageEl = document.getElementById('status-message');
+        const resultsSection = document.getElementById('results-section');
+        const originalImageEl = document.getElementById('original-image');
+        const correctedImageEl = document.getElementById('corrected-image');
+        const whiteReferenceMarker = document.getElementById('white-reference-marker');
+        
+        // Color swatch elements
+        const skinSwatch = document.getElementById('skin-swatch');
+        const hairSwatch = document.getElementById('hair-swatch');
+        const lipSwatch = document.getElementById('lip-swatch');
+        const eyeSwatch = document.getElementById('eye-swatch');
+        const skinValue = document.getElementById('skin-value');
+        const hairValue = document.getElementById('hair-value');
+        const lipValue = document.getElementById('lip-value');
+        const eyeValue = document.getElementById('eye-value');
+        
+        // App State
+        let isCalibrated = false;
+        let whiteReference = null;
+        let whiteReferencePosition = null;
+        let originalImageData = null;
+        let correctedImageData = null;
+        
+        // Initialize the app
+        async function init() {
+            try {
+                await startCamera();
+                setupEventListeners();
+                updateStatus('Camera ready. Please calibrate with a white reference.', 'success');
+            } catch (error) {
+                console.error('Error initializing app:', error);
+                updateStatus('Error accessing camera. Please check permissions.', 'error');
+            }
         }
-    });
-    
-    video.srcObject = stream;
-    video.play();
-    
-    // Set canvas size to match video
-    video.onloadedmetadata = () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-    };
-}
-
-// ═══════════════════════════════════════
-// STEP 2: User Taps White Reference
-// ═══════════════════════════════════════
-
-video.addEventListener('click', (e) => {
-    if (referenceLocation) return; // Already locked
-    
-    const rect = video.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (video.videoWidth / rect.width);
-    const y = (e.clientY - rect.top) * (video.videoHeight / rect.height);
-    
-    // Sample 50x50 pixel area around tap
-    ctx.drawImage(video, 0, 0);
-    const imageData = ctx.getImageData(x - 25, y - 25, 50, 50);
-    
-    // Get average color of tapped area
-    referenceColor = getAverageColor(imageData);
-    
-    // Validate it's actually white-ish
-    if (isValidWhite(referenceColor)) {
-        referenceLocation = { x, y };
         
-        // Try to lock camera settings (might not work in browser)
-        tryLockCameraSettings(referenceColor);
-        
-        // Show countdown
-        startCountdown();
-    } else {
-        alert('Please tap on a white surface!');
-    }
-});
-
-function getAverageColor(imageData) {
-    const data = imageData.data;
-    let r = 0, g = 0, b = 0, count = 0;
-    
-    for (let i = 0; i < data.length; i += 4) {
-        r += data[i];
-        g += data[i + 1];
-        b += data[i + 2];
-        count++;
-    }
-    
-    return {
-        r: r / count,
-        g: g / count,
-        b: b / count
-    };
-}
-
-function isValidWhite(color) {
-    // Check if color is bright and neutral
-    const brightness = (color.r + color.g + color.b) / 3;
-    const variance = Math.max(
-        Math.abs(color.r - brightness),
-        Math.abs(color.g - brightness),
-        Math.abs(color.b - brightness)
-    );
-    
-    return brightness > 180 && variance < 30;
-}
-
-// ═══════════════════════════════════════
-// STEP 3: Countdown and Capture
-// ═══════════════════════════════════════
-
-function startCountdown() {
-    const countdownEl = document.getElementById('countdown');
-    let count = 3;
-    
-    const interval = setInterval(() => {
-        countdownEl.textContent = count;
-        countdownEl.style.fontSize = '100px';
-        
-        if (count === 0) {
-            clearInterval(interval);
-            capturePhoto();
+        // Start camera
+        async function startCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: 'user',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            });
+            
+            video.srcObject = stream;
+            
+            // Set canvas size when video metadata is loaded
+            video.addEventListener('loadedmetadata', () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            });
         }
-        count--;
-    }, 1000);
-}
-
-function capturePhoto() {
-    // Capture current frame with reference visible
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Get image data for processing
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    
-    // Process the image
-    processImage(imageData);
-}
-
-// ═══════════════════════════════════════
-// STEP 4: Color Correction Using Reference
-// ═══════════════════════════════════════
-
-function processImage(imageData) {
-    // Find the white reference in the image
-    const referenceInImage = findReferenceInImage(imageData, referenceLocation);
-    
-    if (!referenceInImage) {
-        alert('Reference not found in photo. Please try again.');
-        return;
-    }
-    
-    // Calculate color correction
-    const correction = calculateCorrection(referenceInImage);
-    
-    // Apply correction to entire image
-    const correctedImageData = applyCorrection(imageData, correction);
-    
-    // Draw corrected image
-    ctx.putImageData(correctedImageData, 0, 0);
-    
-    // Convert to downloadable image
-    const correctedImage = canvas.toDataURL('image/jpeg', 0.95);
-    
-    // Extract face colors from corrected image
-    extractFaceColors(correctedImageData).then(colors => {
-        showResults(correctedImage, colors);
-    });
-}
-
-function findReferenceInImage(imageData, location) {
-    // Sample area around where user tapped
-    const x = Math.floor(location.x);
-    const y = Math.floor(location.y);
-    const size = 50;
-    
-    const data = imageData.data;
-    const width = imageData.width;
-    
-    let r = 0, g = 0, b = 0, count = 0;
-    
-    for (let dy = -size/2; dy < size/2; dy++) {
-        for (let dx = -size/2; dx < size/2; dx++) {
-            const px = x + dx;
-            const py = y + dy;
-            if (px >= 0 && px < width && py >= 0 && py < imageData.height) {
-                const i = (py * width + px) * 4;
+        
+        // Set up event listeners
+        function setupEventListeners() {
+            // Calibrate button - tap on white reference
+            calibrateBtn.addEventListener('click', handleCalibration);
+            
+            // Capture button
+            captureBtn.addEventListener('click', startCaptureProcess);
+            
+            // Reset button
+            resetBtn.addEventListener('click', resetApp);
+            
+            // Download button
+            downloadBtn.addEventListener('click', downloadCorrectedImage);
+            
+            // New analysis button
+            newAnalysisBtn.addEventListener('click', resetApp);
+        }
+        
+        // Handle white reference calibration
+        function handleCalibration() {
+            // Draw current video frame to canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Get image data
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            // Sample multiple points to find the brightest area (likely white reference)
+            const samplePoints = getSamplePoints(canvas.width, canvas.height, 50);
+            const brightestPoint = findBrightestPoint(imageData, samplePoints);
+            
+            if (brightestPoint) {
+                whiteReferencePosition = brightestPoint;
+                
+                // Sample a small area around the brightest point
+                const sampleSize = 30;
+                const sampleX = Math.max(0, Math.min(brightestPoint.x - sampleSize/2, canvas.width - sampleSize));
+                const sampleY = Math.max(0, Math.min(brightestPoint.y - sampleSize/2, canvas.height - sampleSize));
+                
+                const sampleData = ctx.getImageData(sampleX, sampleY, sampleSize, sampleSize);
+                whiteReference = getAverageColor(sampleData);
+                
+                // Show marker at white reference position
+                whiteReferenceMarker.style.left = `${brightestPoint.x}px`;
+                whiteReferenceMarker.style.top = `${brightestPoint.y}px`;
+                whiteReferenceMarker.style.display = 'block';
+                
+                isCalibrated = true;
+                captureBtn.disabled = false;
+                
+                updateStatus('White reference calibrated successfully! Position your face and click "Capture".', 'success');
+            } else {
+                updateStatus('No suitable white reference found. Please ensure a bright white area is visible.', 'error');
+            }
+        }
+        
+        // Get sample points across the image
+        function getSamplePoints(width, height, count) {
+            const points = [];
+            const stepX = width / Math.sqrt(count);
+            const stepY = height / Math.sqrt(count);
+            
+            for (let x = stepX/2; x < width; x += stepX) {
+                for (let y = stepY/2; y < height; y += stepY) {
+                    points.push({ x: Math.round(x), y: Math.round(y) });
+                }
+            }
+            
+            return points;
+        }
+        
+        // Find the brightest point among sample points
+        function findBrightestPoint(imageData, samplePoints) {
+            let maxBrightness = 0;
+            let brightestPoint = null;
+            const data = imageData.data;
+            
+            for (const point of samplePoints) {
+                const idx = (point.y * imageData.width + point.x) * 4;
+                const r = data[idx];
+                const g = data[idx + 1];
+                const b = data[idx + 2];
+                
+                // Calculate brightness (using luminance formula)
+                const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+                
+                // Also check for neutral color (close to white/gray)
+                const maxComponent = Math.max(r, g, b);
+                const minComponent = Math.min(r, g, b);
+                const isNeutral = (maxComponent - minComponent) < 50;
+                
+                if (brightness > maxBrightness && brightness > 180 && isNeutral) {
+                    maxBrightness = brightness;
+                    brightestPoint = point;
+                }
+            }
+            
+            return brightestPoint;
+        }
+        
+        // Get average color from image data
+        function getAverageColor(imageData) {
+            const data = imageData.data;
+            let r = 0, g = 0, b = 0;
+            const pixelCount = imageData.width * imageData.height;
+            
+            for (let i = 0; i < data.length; i += 4) {
                 r += data[i];
                 g += data[i + 1];
                 b += data[i + 2];
-                count++;
+            }
+            
+            return {
+                r: r / pixelCount,
+                g: g / pixelCount,
+                b: b / pixelCount
+            };
+        }
+        
+        // Start the capture process with countdown
+        function startCaptureProcess() {
+            if (!isCalibrated) {
+                updateStatus('Please calibrate with a white reference first.', 'error');
+                return;
+            }
+            
+            // Disable buttons during countdown
+            calibrateBtn.disabled = true;
+            captureBtn.disabled = true;
+            resetBtn.disabled = true;
+            
+            // Start countdown
+            let count = 3;
+            countdownEl.textContent = count;
+            countdownEl.style.display = 'block';
+            
+            const countdownInterval = setInterval(() => {
+                count--;
+                countdownEl.textContent = count;
+                
+                if (count <= 0) {
+                    clearInterval(countdownInterval);
+                    countdownEl.style.display = 'none';
+                    captureImage();
+                }
+            }, 1000);
+        }
+        
+        // Capture and process the image
+        function captureImage() {
+            // Draw current video frame to canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Store original image data
+            originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            // Apply color correction
+            correctedImageData = applyColorCorrection(originalImageData, whiteReference);
+            
+            // Draw corrected image to canvas
+            ctx.putImageData(correctedImageData, 0, 0);
+            
+            // Convert canvas to image for display
+            const correctedImageURL = canvas.toDataURL('image/jpeg');
+            
+            // Convert original to image for display
+            ctx.putImageData(originalImageData, 0, 0);
+            const originalImageURL = canvas.toDataURL('image/jpeg');
+            
+            // Display results
+            showResults(originalImageURL, correctedImageURL);
+            
+            // Extract colors from corrected image
+            extractColors(correctedImageData);
+        }
+        
+        // Apply color correction based on white reference
+        function applyColorCorrection(imageData, whiteRef) {
+            const data = imageData.data;
+            const correctedData = new Uint8ClampedArray(data.length);
+            
+            // Calculate correction factors to make white reference pure white (255, 255, 255)
+            const targetWhite = 255;
+            const rGain = targetWhite / whiteRef.r;
+            const gGain = targetWhite / whiteRef.g;
+            const bGain = targetWhite / whiteRef.b;
+            
+            // Apply correction to each pixel
+            for (let i = 0; i < data.length; i += 4) {
+                correctedData[i] = Math.min(255, data[i] * rGain);     // R
+                correctedData[i + 1] = Math.min(255, data[i + 1] * gGain); // G
+                correctedData[i + 2] = Math.min(255, data[i + 2] * bGain); // B
+                correctedData[i + 3] = data[i + 3]; // Alpha (unchanged)
+            }
+            
+            return new ImageData(correctedData, imageData.width, imageData.height);
+        }
+        
+        // Extract colors from the image
+        function extractColors(imageData) {
+            // For demonstration, we'll extract colors from predefined regions
+            // In a real app, you would use face detection to find these areas
+            
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            
+            // Define sample regions (simulating face detection)
+            const skinRegion = {
+                x: width * 0.4, y: height * 0.4,
+                width: width * 0.2, height: height * 0.1
+            };
+            
+            const hairRegion = {
+                x: width * 0.4, y: height * 0.2,
+                width: width * 0.2, height: height * 0.15
+            };
+            
+            const lipRegion = {
+                x: width * 0.45, y: height * 0.55,
+                width: width * 0.1, height: height * 0.05
+            };
+            
+            const eyeRegion = {
+                x: width * 0.35, y: height * 0.4,
+                width: width * 0.1, height: height * 0.05
+            };
+            
+            // Extract average colors from each region
+            const skinColor = getRegionColor(imageData, skinRegion);
+            const hairColor = getRegionColor(imageData, hairRegion);
+            const lipColor = getRegionColor(imageData, lipRegion);
+            const eyeColor = getRegionColor(imageData, eyeRegion);
+            
+            // Update UI with extracted colors
+            updateColorSwatches(skinColor, hairColor, lipColor, eyeColor);
+        }
+        
+        // Get average color from a specific region
+        function getRegionColor(imageData, region) {
+            const data = imageData.data;
+            let r = 0, g = 0, b = 0;
+            let count = 0;
+            
+            const startX = Math.max(0, Math.floor(region.x));
+            const startY = Math.max(0, Math.floor(region.y));
+            const endX = Math.min(imageData.width, Math.floor(region.x + region.width));
+            const endY = Math.min(imageData.height, Math.floor(region.y + region.height));
+            
+            // Sample every 5th pixel for performance
+            for (let y = startY; y < endY; y += 5) {
+                for (let x = startX; x < endX; x += 5) {
+                    const idx = (y * imageData.width + x) * 4;
+                    r += data[idx];
+                    g += data[idx + 1];
+                    b += data[idx + 2];
+                    count++;
+                }
+            }
+            
+            return {
+                r: Math.round(r / count),
+                g: Math.round(g / count),
+                b: Math.round(b / count)
+            };
+        }
+        
+        // Update color swatches in the UI
+        function updateColorSwatches(skin, hair, lip, eye) {
+            // Skin
+            skinSwatch.style.backgroundColor = `rgb(${skin.r}, ${skin.g}, ${skin.b})`;
+            skinValue.textContent = `RGB(${skin.r}, ${skin.g}, ${skin.b})`;
+            
+            // Hair
+            hairSwatch.style.backgroundColor = `rgb(${hair.r}, ${hair.g}, ${hair.b})`;
+            hairValue.textContent = `RGB(${hair.r}, ${hair.g}, ${hair.b})`;
+            
+            // Lips
+            lipSwatch.style.backgroundColor = `rgb(${lip.r}, ${lip.g}, ${lip.b})`;
+            lipValue.textContent = `RGB(${lip.r}, ${lip.g}, ${lip.b})`;
+            
+            // Eyes
+            eyeSwatch.style.backgroundColor = `rgb(${eye.r}, ${eye.g}, ${eye.b})`;
+            eyeValue.textContent = `RGB(${eye.r}, ${eye.g}, ${eye.b})`;
+        }
+        
+        // Show results section
+        function showResults(originalURL, correctedURL) {
+            originalImageEl.src = originalURL;
+            correctedImageEl.src = correctedURL;
+            resultsSection.style.display = 'block';
+            
+            // Scroll to results
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Download the corrected image
+        function downloadCorrectedImage() {
+            const link = document.createElement('a');
+            link.download = 'color-corrected-photo.jpg';
+            link.href = correctedImageEl.src;
+            link.click();
+        }
+        
+        // Reset the app to initial state
+        function resetApp() {
+            isCalibrated = false;
+            whiteReference = null;
+            whiteReferencePosition = null;
+            originalImageData = null;
+            correctedImageData = null;
+            
+            whiteReferenceMarker.style.display = 'none';
+            resultsSection.style.display = 'none';
+            calibrateBtn.disabled = false;
+            captureBtn.disabled = true;
+            resetBtn.disabled = false;
+            
+            updateStatus('App reset. Please calibrate with a white reference.', 'success');
+        }
+        
+        // Update status message
+        function updateStatus(message, type) {
+            statusMessageEl.textContent = message;
+            statusMessageEl.className = 'status-message';
+            
+            if (type === 'success') {
+                statusMessageEl.classList.add('success');
+            } else if (type === 'error') {
+                statusMessageEl.classList.add('error');
             }
         }
-    }
-    
-    return {
-        r: r / count,
-        g: g / count,
-        b: b / count
-    };
-}
-
-function calculateCorrection(measuredWhite) {
-    // Target: Pure white (255, 255, 255)
-    // Measured: What the camera actually captured
-    
-    // Calculate per-channel gains
-    const targetWhite = 255;
-    
-    return {
-        rGain: targetWhite / measuredWhite.r,
-        gGain: targetWhite / measuredWhite.g,
-        bGain: targetWhite / measuredWhite.b
-    };
-}
-
-function applyCorrection(imageData, correction) {
-    const corrected = ctx.createImageData(imageData.width, imageData.height);
-    const src = imageData.data;
-    const dst = corrected.data;
-    
-    for (let i = 0; i < src.length; i += 4) {
-        // Apply gains with clamping
-        dst[i]     = Math.min(255, Math.max(0, src[i] * correction.rGain));
-        dst[i + 1] = Math.min(255, Math.max(0, src[i + 1] * correction.gGain));
-        dst[i + 2] = Math.min(255, Math.max(0, src[i + 2] * correction.bGain));
-        dst[i + 3] = src[i + 3]; // Alpha unchanged
-    }
-    
-    return corrected;
-}
-
-// ═══════════════════════════════════════
-// STEP 5: Face Color Extraction
-// ═══════════════════════════════════════
-
-async function extractFaceColors(imageData) {
-    // Load face segmentation model
-    const bodyPix = await bodySegmentation.createSegmenter(
-        bodySegmentation.SupportedModels.BodyPix
-    );
-    
-    // Create image from imageData
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = imageData.width;
-    tempCanvas.height = imageData.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.putImageData(imageData, 0, 0);
-    
-    // Segment the image
-    const segmentation = await bodyPix.segmentPerson(tempCanvas);
-    
-    // Extract colors from face regions
-    const colors = {
-        skin: extractRegionColor(imageData, segmentation, 'face'),
-        hair: extractRegionColor(imageData, segmentation, 'hair'),
-        // eyes: more complex, needs eye detection
-    };
-    
-    return colors;
-}
-
-function extractRegionColor(imageData, segmentation, region) {
-    // Sample multiple pixels from region
-    // Remove outliers
-    // Return median color
-    
-    // Simplified version:
-    const data = imageData.data;
-    const mask = segmentation.data;
-    
-    let r = 0, g = 0, b = 0, count = 0;
-    
-    for (let i = 0; i < mask.length; i++) {
-        if (mask[i] === 1) { // Person pixel
-            const idx = i * 4;
-            r += data[idx];
-            g += data[idx + 1];
-            b += data[idx + 2];
-            count++;
-        }
-    }
-    
-    return {
-        r: Math.round(r / count),
-        g: Math.round(g / count),
-        b: Math.round(b / count)
-    };
-}
-
-// ═══════════════════════════════════════
-// STEP 6: Show Results
-// ═══════════════════════════════════════
-
-function showResults(correctedImage, colors) {
-    document.getElementById('video-container').style.display = 'none';
-    document.getElementById('results').style.display = 'block';
-    
-    // Show corrected image
-    const img = document.getElementById('corrected-image');
-    img.src = correctedImage;
-    
-    // Show color swatches
-    const colorsDiv = document.getElementById('colors');
-    colorsDiv.innerHTML = `
-        <div class="color-result">
-            <div class="swatch" style="background: rgb(${colors.skin.r}, ${colors.skin.g}, ${colors.skin.b})"></div>
-            <span>Skin Tone</span>
-        </div>
-        <div class="color-result">
-            <div class="swatch" style="background: rgb(${colors.hair.r}, ${colors.hair.g}, ${colors.hair.b})"></div>
-            <span>Hair Color</span>
-        </div>
-    `;
-    
-    // Download button
-    document.getElementById('download').onclick = () => {
-        const link = document.createElement('a');
-        link.download = 'color-corrected.jpg';
-        link.href = correctedImage;
-        link.click();
-    };
-}
-
-// ═══════════════════════════════════════
-// START THE APP
-// ═══════════════════════════════════════
-
-startCamera();
+        
+        // Initialize the app when the page loads
+        window.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
