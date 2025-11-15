@@ -11,42 +11,65 @@ const cctx = corrected.getContext('2d');
 const captureBtn = document.getElementById('capture');
 const downloadBtn = document.getElementById('download');
 const lockIndicator = document.getElementById('lockIndicator');
+const cameraSelect = document.getElementById('cameraSelect');
+const activeCamLabel = document.getElementById('activeCam');
 
 let w = 0, h = 0;
 let locked = false;
 let gains = { r:1, g:1, b:1 };
+let currentFacingMode = cameraSelect.value; // 'user' or 'environment'
 
 // Optional: starter CCM tuned gently toward skin neutrality.
-// We'll refine this later using your colorimeter pairs (fit a matrix on sample points).
+// You can later replace this with a matrix fitted from your colorimeter pairs.
 const CCM = [
-  [1.02, -0.03, 0.01],
-  [-0.02, 1.01, 0.01],
-  [0.01, -0.01, 1.02]
+  [1.02, -0.03,  0.01],
+  [-0.02,  1.01, 0.01],
+  [0.01, -0.01,  1.02]
 ];
 
 init();
 
-// Initialize camera in selfie mode with continuous focus (if supported)
+// Initialize camera with chosen facing mode
 async function init() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: 'user',
-      focusMode: 'continuous' // not universally supported, but harmless if ignored
-    },
-    audio: false
-  });
-  video.srcObject = stream;
-  await video.play();
+  // Stop previous stream if any
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(track => track.stop());
+    video.srcObject = null;
+  }
 
-  w = video.videoWidth;
-  h = video.videoHeight;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: currentFacingMode,
+        focusMode: 'continuous' // may be ignored by some browsers
+      },
+      audio: false
+    });
 
-  // Size canvases to video
-  canvas.width = w; canvas.height = h;
-  original.width = w; original.height = h;
-  corrected.width = w; corrected.height = h;
+    video.srcObject = stream;
+    await video.play();
 
-  requestAnimationFrame(draw);
+    w = video.videoWidth;
+    h = video.videoHeight;
+
+    // Size canvases to video
+    canvas.width = w; canvas.height = h;
+    original.width = w; original.height = h;
+    corrected.width = w; corrected.height = h;
+
+    // Update active camera label
+    activeCamLabel.textContent = `Active: ${currentFacingMode === 'user' ? 'Front' : 'Rear'}`;
+
+    // Reset lock state when switching cameras
+    locked = false;
+    lockIndicator.style.display = 'none';
+    gains = { r:1, g:1, b:1 };
+
+    requestAnimationFrame(draw);
+  } catch (err) {
+    console.error('Camera init error:', err);
+    activeCamLabel.textContent = 'Camera access error';
+  }
 }
 
 // Live draw from video to canvas
@@ -66,8 +89,8 @@ function toSRGB(l) {
 
 // Tap anywhere on preview to sample the white/neutral reference and lock
 canvas.addEventListener('click', (e) => {
-  // Compute tap coords relative to the canvas size
   const rect = canvas.getBoundingClientRect();
+  // Map click to video pixel coordinates
   const x = Math.round((e.clientX - rect.left) * (w / rect.width));
   const y = Math.round((e.clientY - rect.top) * (h / rect.height));
 
@@ -82,7 +105,7 @@ canvas.addEventListener('click', (e) => {
   const t = (rMean + gMean + bMean) / 3;
   gains = { r: t / rMean, g: t / gMean, b: t / bMean };
 
-  // Stability “lock” — simple immediate lock with clear UI feedback
+  // Immediate lock with clear UI feedback
   locked = true;
   lockIndicator.style.display = 'block';
 });
@@ -151,4 +174,10 @@ downloadBtn.addEventListener('click', () => {
     a.click();
     URL.revokeObjectURL(a.href);
   }, 'image/png', 1.0);
+});
+
+// Camera selector change
+cameraSelect.addEventListener('change', (e) => {
+  currentFacingMode = e.target.value; // 'user' or 'environment'
+  init(); // restart stream with new camera
 });
