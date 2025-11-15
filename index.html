@@ -1,210 +1,56 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Debug Color Calibration</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 10px;
-            background-color: #f5f5f5;
-        }
-        #cameraView {
-            width: 100%;
-            max-width: 500px;
-            border: 2px solid #333;
-            margin: 10px auto;
-            display: block;
-            position: relative;
-        }
-        #calibrationCircle {
-            position: absolute;
-            width: 150px;
-            height: 150px;
-            border: 2px dashed rgba(255, 0, 0, 0.7);
-            border-radius: 50%;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-            display: none;
-        }
-        #canvas {
-            display: none;
-        }
-        button {
-            padding: 12px 20px;
-            font-size: 16px;
-            margin: 10px;
-            cursor: pointer;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-        }
-        #debugInfo {
-            margin: 20px;
-            padding: 10px;
-            background-color: white;
-            border-radius: 5px;
-            text-align: left;
-        }
-        #rgbValues {
-            font-family: monospace;
-            font-size: 14px;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Color-True Camera</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <h1>Debug Color Calibration</h1>
-    <p>Tap the white reference. The RGB values of the sampled area will be shown below.</p>
-    <div style="position: relative;">
-        <video id="cameraView" autoplay playsinline></video>
-        <div id="calibrationCircle"></div>
-    </div>
+  <div id="app">
+    <!-- Live camera preview -->
+    <video id="video" autoplay playsinline></video>
+    <!-- Canvas used for live drawing and capture -->
     <canvas id="canvas"></canvas>
-    <div id="debugInfo">
-        <h3>Debug Info:</h3>
-        <p>Sampling a <span id="sampleSize"></span> area.</p>
-        <p>Median RGB values: <span id="rgbValues"></span></p>
-        <p>Is bright enough? <span id="brightnessCheck"></span></p>
-    </div>
-    <div>
-        <button id="calibrateBtn">Tap White Reference</button>
-        <button id="captureBtn" disabled>Capture Photo</button>
-    </div>
-    <div id="results">
-        <h2>Results</h2>
-        <div class="image-container">
-            <img id="originalImg" style="max-width: 45%; border: 1px solid #ccc; border-radius: 5px;">
-            <img id="calibratedImg" style="max-width: 45%; border: 1px solid #ccc; border-radius: 5px;">
-        </div>
-        <button id="downloadBtn" style="display: none; background-color: #2196F3; padding: 12px 20px; font-size: 16px; margin: 10px; cursor: pointer; color: white; border: none; border-radius: 5px;">Download Calibrated Image</button>
+
+    <!-- Guidance overlay: face frame + eye lines + pointer for white reference -->
+    <div id="overlay">
+      <div id="faceGuide">
+        <div class="eyeLine" style="top:40%"></div>
+        <div class="eyeLine" style="top:48%"></div>
+        <div class="faceBox"></div>
+      </div>
+      <!-- Pointer shows suggested white reference area (thumb-reachable) -->
+      <div id="pointer" title="Hold your white reference here"></div>
     </div>
 
-    <script>
-        const cameraView = document.getElementById('cameraView');
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
-        const calibrateBtn = document.getElementById('calibrateBtn');
-        const captureBtn = document.getElementById('captureBtn');
-        const originalImg = document.getElementById('originalImg');
-        const calibratedImg = document.getElementById('calibratedImg');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const calibrationCircle = document.getElementById('calibrationCircle');
-        const sampleSizeSpan = document.getElementById('sampleSize');
-        const rgbValuesSpan = document.getElementById('rgbValues');
-        const brightnessCheckSpan = document.getElementById('brightnessCheck');
+    <!-- Top fixed UI: instructions, capture, download -->
+    <div id="ui">
+      <div id="hint">
+        Tap the white patch to lock. Keep face inside the oval. Align eyes with the lines.
+      </div>
+      <div class="controls">
+        <button id="capture">Capture</button>
+        <button id="download">Download</button>
+      </div>
+    </div>
 
-        let stream = null;
-        let isCalibrated = false;
-        let whiteBalanceGains = [1, 1, 1];
+    <!-- Lock indicator -->
+    <div id="lockIndicator">LOCKED</div>
 
-        // Show calibration circle
-        cameraView.addEventListener('click', (e) => {
-            const rect = cameraView.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            calibrationCircle.style.left = `${x}px`;
-            calibrationCircle.style.top = `${y}px`;
-            calibrationCircle.style.display = 'block';
-        });
+    <!-- Results area (appears after capture) -->
+    <div id="result">
+      <div class="pair">
+        <div class="label">Original</div>
+        <canvas id="original"></canvas>
+      </div>
+      <div class="pair">
+        <div class="label">Calibrated</div>
+        <canvas id="corrected"></canvas>
+      </div>
+    </div>
+  </div>
 
-        // Access the camera
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
-            .then((mediaStream) => {
-                stream = mediaStream;
-                cameraView.srcObject = stream;
-            })
-            .catch((err) => {
-                console.error("Error accessing camera:", err);
-                alert("Could not access the camera. Please ensure permissions are granted.");
-            });
-
-        // Calibrate white balance
-        calibrateBtn.addEventListener('click', () => {
-            canvas.width = cameraView.videoWidth;
-            canvas.height = cameraView.videoHeight;
-            context.drawImage(cameraView, 0, 0, canvas.width, canvas.height);
-            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-
-            // Use the center of the calibration circle as the reference
-            const rect = cameraView.getBoundingClientRect();
-            const circleX = parseInt(calibrationCircle.style.left) - rect.left;
-            const circleY = parseInt(calibrationCircle.style.top) - rect.top;
-            const circleRadius = 75;
-            const startX = Math.max(0, circleX - circleRadius);
-            const startY = Math.max(0, circleY - circleRadius);
-            const endX = Math.min(canvas.width, circleX + circleRadius);
-            const endY = Math.min(canvas.height, circleY + circleRadius);
-
-            sampleSizeSpan.textContent = `${(endX - startX)}x${(endY - startY)} pixels`;
-
-            let rValues = [], gValues = [], bValues = [];
-            for (let y = startY; y < endY; y++) {
-                for (let x = startX; x < endX; x++) {
-                    const i = (y * canvas.width + x) * 4;
-                    rValues.push(data[i]);
-                    gValues.push(data[i + 1]);
-                    bValues.push(data[i + 2]);
-                }
-            }
-
-            // Use median to reduce noise
-            rValues.sort((a, b) => a - b);
-            gValues.sort((a, b) => a - b);
-            bValues.sort((a, b) => a - b);
-            const medianR = rValues[Math.floor(rValues.length / 2)];
-            const medianG = gValues[Math.floor(gValues.length / 2)];
-            const medianB = bValues[Math.floor(bValues.length / 2)];
-
-            rgbValuesSpan.textContent = `R: ${medianR}, G: ${medianG}, B: ${medianB}`;
-
-            // Bypass brightness check for debugging
-            // Remove this block for production
-            brightnessCheckSpan.textContent = "Bypassed for debugging";
-            const avg = (medianR + medianG + medianB) / 3;
-            whiteBalanceGains = [avg / medianR, avg / medianG, avg / medianB];
-            isCalibrated = true;
-            captureBtn.disabled = false;
-            alert(`Calibrated with median RGB (${medianR}, ${medianG}, ${medianB}). Now capture the photo.`);
-        });
-
-        // Capture photo
-        captureBtn.addEventListener('click', () => {
-            canvas.width = cameraView.videoWidth;
-            canvas.height = cameraView.videoHeight;
-            context.drawImage(cameraView, 0, 0, canvas.width, canvas.height);
-            const originalData = context.getImageData(0, 0, canvas.width, canvas.height);
-            originalImg.src = canvas.toDataURL('image/png');
-
-            // Apply white balance correction
-            const correctedData = context.createImageData(canvas.width, canvas.height);
-            const originalPixels = originalData.data;
-            const correctedPixels = correctedData.data;
-
-            for (let i = 0; i < originalPixels.length; i += 4) {
-                correctedPixels[i] = Math.min(255, originalPixels[i] * whiteBalanceGains[0]);
-                correctedPixels[i + 1] = Math.min(255, originalPixels[i + 1] * whiteBalanceGains[1]);
-                correctedPixels[i + 2] = Math.min(255, originalPixels[i + 2] * whiteBalanceGains[2]);
-                correctedPixels[i + 3] = originalPixels[i + 3];
-            }
-
-            context.putImageData(correctedData, 0, 0);
-            calibratedImg.src = canvas.toDataURL('image/png');
-            downloadBtn.style.display = 'inline-block';
-        });
-
-        // Download calibrated image
-        downloadBtn.addEventListener('click', () => {
-            const link = document.createElement('a');
-            link.download = 'calibrated-photo.png';
-            link.href = calibratedImg.src;
-            link.click();
-        });
-    </script>
+  <script src="app.js"></script>
 </body>
 </html>
