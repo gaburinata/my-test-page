@@ -8,22 +8,19 @@
 </head>
 <body>
   <div id="app">
-    <!-- Live preview -->
     <video id="video" autoplay playsinline></video>
     <canvas id="previewCanvas"></canvas>
 
-    <!-- Overlay: status + sample box + warnings -->
     <div id="overlay">
       <div id="statusBanner">Tap the white patch to calibrate</div>
       <div id="sampleBox"></div>
       <div id="warnBox"></div>
-      <div id="focusWarn" aria-live="polite"></div>
+      <div id="focusWarn"></div>
     </div>
 
-    <!-- Top controls -->
     <div id="uiTop">
       <div class="controls">
-        <select id="cameraSelect" aria-label="Select camera">
+        <select id="cameraSelect">
           <option value="user" selected>Front camera</option>
           <option value="environment">Rear camera</option>
         </select>
@@ -35,18 +32,15 @@
       </div>
     </div>
 
-    <!-- Bottom controls (thumb-reachable) -->
     <div id="uiBottom">
       <button id="capture">Capture</button>
     </div>
 
-    <!-- Lock indicator -->
     <div id="lockIndicator">LOCKED</div>
 
-    <!-- Results strip -->
     <div id="result">
       <div class="pair">
-        <div class="label">Original (cropped to head + lower neck)</div>
+        <div class="label">Original (cropped)</div>
         <canvas id="original"></canvas>
       </div>
       <div class="pair">
