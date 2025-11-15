@@ -15,6 +15,7 @@ const cameraSelect = document.getElementById('cameraSelect');
 const activeCamLabel = document.getElementById('activeCam');
 const statusBanner = document.getElementById('statusBanner');
 const sampleBox = document.getElementById('sampleBox');
+const focusWarn = document.getElementById('focusWarn');
 
 let w = 0, h = 0;
 let gains = { r:1, g:1, b:1 };
@@ -36,8 +37,8 @@ async function init() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: currentFacingMode,
-        focusMode: 'continuous' // may be ignored
+        facingMode: currentFacingMode
+        // focusMode isn't reliably supported; we skip it
       },
       audio: false
     });
@@ -55,12 +56,13 @@ async function init() {
 
     // Labels and prompts
     activeCamLabel.textContent = `Active: ${currentFacingMode === 'user' ? 'Front' : 'Rear'}`;
-    statusBanner.textContent = 'Tap the white patch to lock';
+    statusBanner.textContent = 'Tap the white patch to calibrate';
 
     // Reset state
     gains = { r:1, g:1, b:1 };
     lockIndicator.style.display = 'none';
     sampleBox.style.display = 'none';
+    focusWarn.style.display = 'none';
     clearCountdown();
 
     requestAnimationFrame(drawPreview);
@@ -93,6 +95,44 @@ function toSRGB(l) {
   return (l <= 0.0031308) ? (l * 12.92) : (1.055 * Math.pow(l, 1 / 2.4) - 0.055);
 }
 
+// Simple highlight compression to avoid "neon white" glow (on linear luminance)
+// Reinhard tone map style: L' = L / (1 + L)
+function compressHighlights(rl, gl, bl) {
+  const L = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+  const Lc = L / (1 + L);
+  const scale = (L > 0) ? (Lc / L) : 1.0;
+  return [rl * scale, gl * scale, bl * scale];
+}
+
+// Basic focus check: variance of Laplacian on a small center crop
+function isBlurry() {
+  const cw = Math.round(w * 0.25);
+  const ch = Math.round(h * 0.25);
+  const cx = Math.round((w - cw) / 2);
+  const cy = Math.round((h - ch) / 2);
+  const img = pctx.getImageData(cx, cy, cw, ch);
+  // grayscale
+  const gray = new Float32Array(cw * ch);
+  for (let i = 0, j = 0; i < img.data.length; i += 4, j++) {
+    gray[j] = 0.2126 * img.data[i] + 0.7152 * img.data[i+1] + 0.0722 * img.data[i+2];
+  }
+  // Laplacian variance (simple 3x3)
+  let sum = 0, sumSq = 0, n = 0;
+  const idx = (x,y) => y * cw + x;
+  for (let y = 1; y < ch - 1; y++) {
+    for (let x = 1; x < cw - 1; x++) {
+      const lap =
+        -1*gray[idx(x-1,y-1)] + -1*gray[idx(x,y-1)] + -1*gray[idx(x+1,y-1)] +
+        -1*gray[idx(x-1,y)]   +  8*gray[idx(x,y)]   + -1*gray[idx(x+1,y)]   +
+        -1*gray[idx(x-1,y+1)] + -1*gray[idx(x,y+1)] + -1*gray[idx(x+1,y+1)];
+      sum += lap; sumSq += lap * lap; n++;
+    }
+  }
+  const mean = sum / n;
+  const varL = (sumSq / n) - mean * mean;
+  return varL < 2500; // heuristic threshold; tweak if needed
+}
+
 // Tap anywhere to sample the white/neutral patch and auto-capture
 previewCanvas.addEventListener('click', (e) => {
   const rect = previewCanvas.getBoundingClientRect();
@@ -100,7 +140,7 @@ previewCanvas.addEventListener('click', (e) => {
   const y = Math.round((e.clientY - rect.top) * (h / rect.height));
 
   // Visual ROI box near tap
-  const size = Math.floor(Math.min(w, h) * 0.12); // 12% patch
+  const size = Math.floor(Math.min(w, h) * 0.14); // larger patch for stability
   const sx = Math.max(0, Math.min(w - size, x - size / 2));
   const sy = Math.max(0, Math.min(h - size, y - size / 2));
 
@@ -165,18 +205,21 @@ captureBtn.addEventListener('click', captureFrame);
 
 // Capture, crop to head + lower neck, correct, and show results
 function captureFrame() {
+  // Focus check (warn only; still capture)
+  const blurry = isBlurry();
+  focusWarn.style.display = blurry ? 'block' : 'none';
+  focusWarn.textContent = blurry ? 'Image looks out of focus. Hold steady or adjust distance.' : '';
+
   // Draw frame to original temp canvas
   octx.drawImage(video, 0, 0, w, h);
 
-  // Compute crop rectangle using guide percentages:
-  // Centered crop that includes hair and the lower neck/clavicle.
-  // Derived from faceBox position in CSS (top:22%, left:16%, width:68%, height:50%).
-  // We'll extend downward to include clavicle: add 18% height below faceBox.
+  // Crop rectangle: tight head + hair + full neck (down to clavicle)
+  // Centered crop vertically biased downwards to include lower neck.
   const crop = {
-    x: Math.round(w * 0.10),                 // a bit tighter than left:16%
-    y: Math.round(h * 0.14),                 // above face top to include hair
-    width: Math.round(w * 0.80),             // tighter crop around the face area
-    height: Math.round(h * (0.50 + 0.22))    // face height + extra 22% for lower neck/clavicle
+    x: Math.round(w * 0.10),                 // tighter horizontally
+    y: Math.round(h * 0.12),                 // include hair without too much empty top
+    width: Math.round(w * 0.80),
+    height: Math.round(h * 0.64)             // enough to include lower neck/clavicle
   };
 
   // Clamp crop bounds
@@ -185,7 +228,6 @@ function captureFrame() {
   crop.width = Math.min(w - crop.x, crop.width);
   crop.height = Math.min(h - crop.y, crop.height);
 
-  const imgFull = octx.getImageData(0, 0, w, h);
   const imgCropped = octx.getImageData(crop.x, crop.y, crop.width, crop.height);
 
   // Prepare visible canvases to crop size
@@ -199,14 +241,20 @@ function captureFrame() {
   const out = new ImageData(crop.width, crop.height);
   const d = imgCropped.data;
   for (let i = 0; i < d.length; i += 4) {
+    // to linear
     let rl = toLin(d[i])     * gains.r;
     let gl = toLin(d[i + 1]) * gains.g;
     let bl = toLin(d[i + 2]) * gains.b;
 
-    const r2 = CCM[0][0] * rl + CCM[0][1] * gl + CCM[0][2] * bl;
-    const g2 = CCM[1][0] * rl + CCM[1][1] * gl + CCM[1][2] * bl;
-    const b2 = CCM[2][0] * rl + CCM[2][1] * gl + CCM[2][2] * bl;
+    // Gentle CCM
+    let r2 = CCM[0][0] * rl + CCM[0][1] * gl + CCM[0][2] * bl;
+    let g2 = CCM[1][0] * rl + CCM[1][1] * gl + CCM[1][2] * bl;
+    let b2 = CCM[2][0] * rl + CCM[2][1] * gl + CCM[2][2] * bl;
 
+    // Highlight compression to avoid neon white bleed
+    [r2, g2, b2] = compressHighlights(r2, g2, b2);
+
+    // back to sRGB + clamp
     const rs = Math.min(255, Math.max(0, Math.round(toSRGB(r2) * 255)));
     const gs = Math.min(255, Math.max(0, Math.round(toSRGB(g2) * 255)));
     const bs = Math.min(255, Math.max(0, Math.round(toSRGB(b2) * 255)));
@@ -221,8 +269,8 @@ function captureFrame() {
   // Show results strip
   document.getElementById('result').style.display = 'grid';
   statusBanner.textContent = 'Captured';
-  // Hide sample box after capture
   sampleBox.style.display = 'none';
+  lockIndicator.style.display = 'none';
 }
 
 // Download calibrated image
