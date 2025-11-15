@@ -20,19 +20,24 @@
         <div class="eyeLine" style="top:48%"></div>
         <div class="faceBox"></div>
       </div>
-      <!-- Pointer shows suggested white reference area (thumb-reachable) -->
+      <!-- Pointer shows suggested white reference area (thumb-reachable in selfie mode) -->
       <div id="pointer" title="Hold your white reference here"></div>
     </div>
 
-    <!-- Top fixed UI: instructions, capture, download -->
+    <!-- Top fixed UI: camera select, hint, capture, download -->
     <div id="ui">
-      <div id="hint">
-        Tap the white patch to lock. Keep face inside the oval. Align eyes with the lines.
-      </div>
       <div class="controls">
+        <select id="cameraSelect" aria-label="Select camera">
+          <option value="user" selected>Front camera</option>
+          <option value="environment">Rear camera</option>
+        </select>
         <button id="capture">Capture</button>
         <button id="download">Download</button>
       </div>
+      <div id="hint">
+        Tap the white patch to lock. Keep face inside the oval. Align eyes with the lines.
+      </div>
+      <div id="activeCam">Active: Front</div>
     </div>
 
     <!-- Lock indicator -->
