@@ -8,18 +8,22 @@
 </head>
 <body>
   <div id="app">
-    <video id="video" playsinline muted></video>
+    <!-- Muted is required for autoplay on mobile browsers -->
+    <video id="video" autoplay playsinline muted></video>
     <canvas id="previewCanvas"></canvas>
 
+    <!-- Overlay UI -->
     <div id="overlay">
-      <div id="statusBanner">Press Start or tap a white patch to calibrate</div>
+      <div id="statusBanner">Press Start Camera, then Start (auto), or tap a white patch</div>
       <div id="sampleBox"></div>
       <div id="warnBox"></div>
       <div id="focusWarn"></div>
     </div>
 
+    <!-- Top controls -->
     <div id="uiTop">
       <div class="controls">
+        <button id="startCam">Start camera</button>
         <select id="cameraSelect">
           <option value="user">Front camera</option>
           <option value="environment" selected>Rear camera</option>
@@ -33,12 +37,15 @@
       </div>
     </div>
 
+    <!-- Bottom shutter -->
     <div id="uiBottom">
       <button id="capture">Capture</button>
     </div>
 
+    <!-- Lock indicator -->
     <div id="lockIndicator">LOCKED</div>
 
+    <!-- Results -->
     <div id="result">
       <div class="pair">
         <div class="label">Original (cropped)</div>
