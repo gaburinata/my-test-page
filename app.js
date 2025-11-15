@@ -15,12 +15,15 @@ const cameraSelect = document.getElementById('cameraSelect');
 const activeCamLabel = document.getElementById('activeCam');
 const statusBanner = document.getElementById('statusBanner');
 const sampleBox = document.getElementById('sampleBox');
+const warnBox = document.getElementById('warnBox');
 const focusWarn = document.getElementById('focusWarn');
+const previewToggle = document.getElementById('previewToggle');
 
 let w = 0, h = 0;
 let gains = { r:1, g:1, b:1 };
 let currentFacingMode = cameraSelect.value; // 'user' or 'environment'
 let countdownTimer = null;
+let livePreview = false;
 
 // Gentle CCM (replace later with fitted matrix from your colorimeter pairs)
 const CCM = [
@@ -36,10 +39,7 @@ async function init() {
   stopStream();
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: currentFacingMode
-        // focusMode isn't reliably supported; we skip it
-      },
+      video: { facingMode: currentFacingMode },
       audio: false
     });
 
@@ -62,6 +62,7 @@ async function init() {
     gains = { r:1, g:1, b:1 };
     lockIndicator.style.display = 'none';
     sampleBox.style.display = 'none';
+    warnBox.style.display = 'none';
     focusWarn.style.display = 'none';
     clearCountdown();
 
@@ -82,7 +83,16 @@ function stopStream() {
 
 // Live draw from video to preview canvas
 function drawPreview() {
-  pctx.drawImage(video, 0, 0, w, h);
+  if (!livePreview) {
+    pctx.drawImage(video, 0, 0, w, h);
+  } else {
+    // live calibrated preview
+    pctx.drawImage(video, 0, 0, w, h);
+    const frame = pctx.getImageData(0, 0, w, h);
+    const out = new ImageData(w, h);
+    processPixels(frame.data, out.data);
+    pctx.putImageData(out, 0, 0);
+  }
   requestAnimationFrame(drawPreview);
 }
 
@@ -95,13 +105,29 @@ function toSRGB(l) {
   return (l <= 0.0031308) ? (l * 12.92) : (1.055 * Math.pow(l, 1 / 2.4) - 0.055);
 }
 
-// Simple highlight compression to avoid "neon white" glow (on linear luminance)
-// Reinhard tone map style: L' = L / (1 + L)
+// Tone shaping to maintain skin clarity
+// 1) Gentle highlight compression (Reinhard)
+// 2) Mild contrast curve (S-curve in linear)
 function compressHighlights(rl, gl, bl) {
   const L = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
   const Lc = L / (1 + L);
   const scale = (L > 0) ? (Lc / L) : 1.0;
   return [rl * scale, gl * scale, bl * scale];
+}
+function contrastCurve(l) {
+  // midtone pivot ~0.18 (linear), gentle S-curve
+  const a = 0.20; // contrast amount (tune 0.15–0.25)
+  const pivot = 0.18;
+  return (l - pivot) * (1 + a) + pivot;
+}
+
+// Patch brightness validation: accept only within safe luminance range
+function validatePatchBrightness(rMean, gMean, bMean) {
+  const L = 0.2126 * rMean + 0.7152 * gMean + 0.0722 * bMean; // linear luminance
+  // Accept range ~0.55–0.85 (white paper that isn't glowing; gray cards also ok)
+  if (L < 0.55) return { ok:false, msg:'Patch too dim. Move to brighter light or use a cleaner white/gray.' };
+  if (L > 0.85) return { ok:false, msg:'Patch overexposed. Step away from direct light or reduce brightness.' };
+  return { ok:true, msg:'' };
 }
 
 // Basic focus check: variance of Laplacian on a small center crop
@@ -130,7 +156,35 @@ function isBlurry() {
   }
   const mean = sum / n;
   const varL = (sumSq / n) - mean * mean;
-  return varL < 2500; // heuristic threshold; tweak if needed
+  return varL < 2500; // tweak threshold if needed
+}
+
+// Process pixels: white balance + CCM + tone shaping
+function processPixels(src, dst) {
+  for (let i = 0; i < src.length; i += 4) {
+    let rl = toLin(src[i])     * gains.r;
+    let gl = toLin(src[i + 1]) * gains.g;
+    let bl = toLin(src[i + 2]) * gains.b;
+
+    // CCM
+    let r2 = CCM[0][0] * rl + CCM[0][1] * gl + CCM[0][2] * bl;
+    let g2 = CCM[1][0] * rl + CCM[1][1] * gl + CCM[1][2] * bl;
+    let b2 = CCM[2][0] * rl + CCM[2][1] * gl + CCM[2][2] * bl;
+
+    // highlight compression
+    [r2, g2, b2] = compressHighlights(r2, g2, b2);
+
+    // gentle contrast
+    r2 = contrastCurve(r2);
+    g2 = contrastCurve(g2);
+    b2 = contrastCurve(b2);
+
+    // back to sRGB + clamp
+    dst[i]   = Math.min(255, Math.max(0, Math.round(toSRGB(r2) * 255)));
+    dst[i+1] = Math.min(255, Math.max(0, Math.round(toSRGB(g2) * 255)));
+    dst[i+2] = Math.min(255, Math.max(0, Math.round(toSRGB(b2) * 255)));
+    dst[i+3] = src[i+3];
+  }
 }
 
 // Tap anywhere to sample the white/neutral patch and auto-capture
@@ -154,6 +208,19 @@ previewCanvas.addEventListener('click', (e) => {
   // Sample and compute gains
   const img = pctx.getImageData(sx, sy, size, size);
   const { rMean, gMean, bMean } = meanRGBLinear(img);
+
+  // Patch brightness validation
+  const val = validatePatchBrightness(rMean, gMean, bMean);
+  if (!val.ok) {
+    warnBox.style.display = 'block';
+    warnBox.textContent = val.msg;
+    lockIndicator.style.display = 'none';
+    statusBanner.textContent = 'Adjust patch brightness, then tap again';
+    return;
+  } else {
+    warnBox.style.display = 'none';
+  }
+
   const t = (rMean + gMean + bMean) / 3;
   gains = { r: t / rMean, g: t / gMean, b: t / bMean };
 
@@ -214,12 +281,12 @@ function captureFrame() {
   octx.drawImage(video, 0, 0, w, h);
 
   // Crop rectangle: tight head + hair + full neck (down to clavicle)
-  // Centered crop vertically biased downwards to include lower neck.
+  // Centered crop vertically, slightly biased downward for lower neck inclusion.
   const crop = {
-    x: Math.round(w * 0.10),                 // tighter horizontally
-    y: Math.round(h * 0.12),                 // include hair without too much empty top
+    x: Math.round(w * 0.10),
+    y: Math.round(h * 0.12),
     width: Math.round(w * 0.80),
-    height: Math.round(h * 0.64)             // enough to include lower neck/clavicle
+    height: Math.round(h * 0.64)
   };
 
   // Clamp crop bounds
@@ -239,31 +306,7 @@ function captureFrame() {
 
   // Process calibrated output on cropped data
   const out = new ImageData(crop.width, crop.height);
-  const d = imgCropped.data;
-  for (let i = 0; i < d.length; i += 4) {
-    // to linear
-    let rl = toLin(d[i])     * gains.r;
-    let gl = toLin(d[i + 1]) * gains.g;
-    let bl = toLin(d[i + 2]) * gains.b;
-
-    // Gentle CCM
-    let r2 = CCM[0][0] * rl + CCM[0][1] * gl + CCM[0][2] * bl;
-    let g2 = CCM[1][0] * rl + CCM[1][1] * gl + CCM[1][2] * bl;
-    let b2 = CCM[2][0] * rl + CCM[2][1] * gl + CCM[2][2] * bl;
-
-    // Highlight compression to avoid neon white bleed
-    [r2, g2, b2] = compressHighlights(r2, g2, b2);
-
-    // back to sRGB + clamp
-    const rs = Math.min(255, Math.max(0, Math.round(toSRGB(r2) * 255)));
-    const gs = Math.min(255, Math.max(0, Math.round(toSRGB(g2) * 255)));
-    const bs = Math.min(255, Math.max(0, Math.round(toSRGB(b2) * 255)));
-
-    out.data[i] = rs;
-    out.data[i + 1] = gs;
-    out.data[i + 2] = bs;
-    out.data[i + 3] = d[i + 3];
-  }
+  processPixels(imgCropped.data, out.data);
   cctx.putImageData(out, 0, 0);
 
   // Show results strip
@@ -288,4 +331,10 @@ downloadBtn.addEventListener('click', () => {
 cameraSelect.addEventListener('change', (e) => {
   currentFacingMode = e.target.value; // 'user' or 'environment'
   init(); // restart with selected camera
+});
+
+// Live preview toggle
+previewToggle.addEventListener('change', (e) => {
+  livePreview = e.target.checked;
+  statusBanner.textContent = livePreview ? 'Live preview ON (calibrated)' : 'Tap the white patch to calibrate';
 });
