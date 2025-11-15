@@ -1,3 +1,4 @@
+// Elements
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -7,108 +8,143 @@ const corrected = document.getElementById('corrected');
 const octx = original.getContext('2d');
 const cctx = corrected.getContext('2d');
 
-const sampleBtn = document.getElementById('sample');
-const shutterBtn = document.getElementById('shutter');
-const lockIndicator = document.getElementById('lockIndicator');
+const captureBtn = document.getElementById('capture');
 const downloadBtn = document.getElementById('download');
+const lockIndicator = document.getElementById('lockIndicator');
 
-let stream, w=0, h=0;
-let gains = { r:1, g:1, b:1 };
+let w = 0, h = 0;
 let locked = false;
+let gains = { r:1, g:1, b:1 };
 
-(async function init(){
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'environment' }
+// Optional: starter CCM tuned gently toward skin neutrality.
+// We'll refine this later using your colorimeter pairs (fit a matrix on sample points).
+const CCM = [
+  [1.02, -0.03, 0.01],
+  [-0.02, 1.01, 0.01],
+  [0.01, -0.01, 1.02]
+];
+
+init();
+
+// Initialize camera in selfie mode with continuous focus (if supported)
+async function init() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: 'user',
+      focusMode: 'continuous' // not universally supported, but harmless if ignored
+    },
+    audio: false
   });
   video.srcObject = stream;
   await video.play();
-  w = video.videoWidth; h = video.videoHeight;
+
+  w = video.videoWidth;
+  h = video.videoHeight;
+
+  // Size canvases to video
   canvas.width = w; canvas.height = h;
   original.width = w; original.height = h;
   corrected.width = w; corrected.height = h;
+
   requestAnimationFrame(draw);
-})();
-
-function toLin(c){ // sRGB to linear
-  c = c/255;
-  return (c <= 0.04045) ? (c/12.92) : Math.pow((c+0.055)/1.055, 2.4);
-}
-function toSRGB(lin){
-  return (lin <= 0.0031308) ? (lin*12.92) : (1.055*Math.pow(lin,1/2.4)-0.055);
 }
 
-function draw(){
+// Live draw from video to canvas
+function draw() {
   ctx.drawImage(video, 0, 0, w, h);
-  if (!locked) {
-    // live preview, no correction
-  }
   requestAnimationFrame(draw);
 }
 
-// Sample ROI around bottom-right thumb area or tap coordinate
-sampleBtn.addEventListener('click', () => {
-  const roi = { x: Math.floor(w*0.65), y: Math.floor(h*0.65), size: Math.floor(Math.min(w,h)*0.1) };
-  const img = ctx.getImageData(roi.x, roi.y, roi.size, roi.size);
+// sRGB <-> linear helpers
+function toLin(c) {
+  c = c / 255;
+  return (c <= 0.04045) ? (c / 12.92) : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+function toSRGB(l) {
+  return (l <= 0.0031308) ? (l * 12.92) : (1.055 * Math.pow(l, 1 / 2.4) - 0.055);
+}
+
+// Tap anywhere on preview to sample the white/neutral reference and lock
+canvas.addEventListener('click', (e) => {
+  // Compute tap coords relative to the canvas size
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.round((e.clientX - rect.left) * (w / rect.width));
+  const y = Math.round((e.clientY - rect.top) * (h / rect.height));
+
+  const size = Math.floor(Math.min(w, h) * 0.1); // 10% patch around tap
+  const sx = Math.max(0, Math.min(w - size, x - size / 2));
+  const sy = Math.max(0, Math.min(h - size, y - size / 2));
+
+  const img = ctx.getImageData(sx, sy, size, size);
   const { rMean, gMean, bMean } = meanRGBLinear(img);
-  const t = (rMean + gMean + bMean)/3;
-  gains = { r: t/rMean, g: t/gMean, b: t/bMean };
-  // Stability check: sample a few frames
-  stabilityCheck(roi).then(ok => {
-    locked = ok;
-    lockIndicator.style.display = ok ? 'inline-block' : 'none';
-  });
+
+  // Per-channel white balance to neutralize the patch
+  const t = (rMean + gMean + bMean) / 3;
+  gains = { r: t / rMean, g: t / gMean, b: t / bMean };
+
+  // Stability “lock” — simple immediate lock with clear UI feedback
+  locked = true;
+  lockIndicator.style.display = 'block';
 });
 
-function meanRGBLinear(img){
+// Mean RGB in linear space over a patch
+function meanRGBLinear(img) {
   const d = img.data;
-  let r=0,g=0,b=0,n=0;
-  for (let i=0;i<d.length;i+=4){
-    r += toLin(d[i]); g += toLin(d[i+1]); b += toLin(d[i+2]); n++;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    r += toLin(d[i]);
+    g += toLin(d[i + 1]);
+    b += toLin(d[i + 2]);
+    n++;
   }
-  return { rMean:r/n, gMean:g/n, bMean:b/n };
+  return { rMean: r / n, gMean: g / n, bMean: b / n };
 }
 
-async function stabilityCheck(roi){
-  const samples = [];
-  for(let i=0;i<6;i++){
-    await new Promise(r => setTimeout(r, 80));
-    const img = ctx.getImageData(roi.x, roi.y, roi.size, roi.size);
-    samples.push(meanRGBLinear(img));
-  }
-  // Stddev threshold
-  const sd = (arr, key) => {
-    const mean = arr.reduce((s,a)=>s+a[key],0)/arr.length;
-    const varr = arr.reduce((s,a)=>s+Math.pow(a[key]-mean,2),0)/arr.length;
-    return Math.sqrt(varr);
-  };
-  const ok = sd(samples,'rMean')<0.01 && sd(samples,'gMean')<0.01 && sd(samples,'bMean')<0.01;
-  return ok;
-}
-
-shutterBtn.addEventListener('click', () => {
-  // Capture original
+// Capture original and produce calibrated output
+captureBtn.addEventListener('click', () => {
+  // Draw the current frame into original canvas
   octx.drawImage(video, 0, 0, w, h);
-  // Correct
-  const img = octx.getImageData(0,0,w,h);
-  const out = new ImageData(w,h);
-  for(let i=0;i<img.data.length;i+=4){
-    const rl = toLin(img.data[i])   * gains.r;
-    const gl = toLin(img.data[i+1]) * gains.g;
-    const bl = toLin(img.data[i+2]) * gains.b;
-    // Optional: apply CAT + CCM here (placeholder)
-    const rs = Math.min(255, Math.max(0, Math.round(toSRGB(rl)*255)));
-    const gs = Math.min(255, Math.max(0, Math.round(toSRGB(gl)*255)));
-    const bs = Math.min(255, Math.max(0, Math.round(toSRGB(bl)*255)));
-    out.data[i]   = rs;
-    out.data[i+1] = gs;
-    out.data[i+2] = bs;
-    out.data[i+3] = img.data[i+3];
+
+  // Get image data
+  const img = octx.getImageData(0, 0, w, h);
+  const out = new ImageData(w, h);
+
+  // Process pixel-by-pixel: white balance + optional CCM
+  for (let i = 0; i < img.data.length; i += 4) {
+    // to linear
+    let rl = toLin(img.data[i]);
+    let gl = toLin(img.data[i + 1]);
+    let bl = toLin(img.data[i + 2]);
+
+    // per-channel white balance gains (from tapped patch)
+    rl *= gains.r;
+    gl *= gains.g;
+    bl *= gains.b;
+
+    // 3x3 Color Correction Matrix (gentle refinement)
+    const r2 = CCM[0][0] * rl + CCM[0][1] * gl + CCM[0][2] * bl;
+    const g2 = CCM[1][0] * rl + CCM[1][1] * gl + CCM[1][2] * bl;
+    const b2 = CCM[2][0] * rl + CCM[2][1] * gl + CCM[2][2] * bl;
+
+    // back to sRGB + clamp
+    const rs = Math.min(255, Math.max(0, Math.round(toSRGB(r2) * 255)));
+    const gs = Math.min(255, Math.max(0, Math.round(toSRGB(g2) * 255)));
+    const bs = Math.min(255, Math.max(0, Math.round(toSRGB(b2) * 255)));
+
+    out.data[i] = rs;
+    out.data[i + 1] = gs;
+    out.data[i + 2] = bs;
+    out.data[i + 3] = img.data[i + 3];
   }
-  cctx.putImageData(out,0,0);
+
+  // Show corrected image
+  cctx.putImageData(out, 0, 0);
+  document.getElementById('result').style.display = 'grid';
 });
 
+// Download corrected image
 downloadBtn.addEventListener('click', () => {
-  corrected.toBlob(blob => {
+  corrected.toBlob((blob) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'calibrated.png';
