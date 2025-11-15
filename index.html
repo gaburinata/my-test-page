@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Color Calibration</title>
+    <title>Debug Color Calibration</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -21,8 +21,8 @@
         }
         #calibrationCircle {
             position: absolute;
-            width: 100px;
-            height: 100px;
+            width: 150px;
+            height: 150px;
             border: 2px dashed rgba(255, 0, 0, 0.7);
             border-radius: 50%;
             top: 50%;
@@ -44,82 +44,44 @@
             border: none;
             border-radius: 5px;
         }
-        button:disabled {
-            background-color: #cccccc;
-        }
-        #sliders {
+        #debugInfo {
             margin: 20px;
-            display: none;
-        }
-        .slider-container {
-            margin: 15px;
-        }
-        .slider-container label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        .slider-container input {
-            width: 100%;
-        }
-        #results {
-            margin-top: 20px;
-            background-color: white;
             padding: 10px;
+            background-color: white;
             border-radius: 5px;
+            text-align: left;
         }
-        .image-container {
-            display: flex;
-            justify-content: space-around;
-            margin: 20px 0;
-            flex-wrap: wrap;
-        }
-        .image-container img {
-            max-width: 45%;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-        }
-        #downloadBtn {
-            background-color: #2196F3;
+        #rgbValues {
+            font-family: monospace;
+            font-size: 14px;
         }
     </style>
 </head>
 <body>
-    <h1>Interactive Color Calibration</h1>
-    <p>Tap the white reference, then adjust the sliders until it looks white.</p>
+    <h1>Debug Color Calibration</h1>
+    <p>Tap the white reference. The RGB values of the sampled area will be shown below.</p>
     <div style="position: relative;">
         <video id="cameraView" autoplay playsinline></video>
         <div id="calibrationCircle"></div>
     </div>
     <canvas id="canvas"></canvas>
+    <div id="debugInfo">
+        <h3>Debug Info:</h3>
+        <p>Sampling a <span id="sampleSize"></span> area.</p>
+        <p>Median RGB values: <span id="rgbValues"></span></p>
+        <p>Is bright enough? <span id="brightnessCheck"></span></p>
+    </div>
     <div>
         <button id="calibrateBtn">Tap White Reference</button>
-        <div id="sliders">
-            <div class="slider-container">
-                <label for="temperatureSlider">Temperature (Cool-Warm):</label>
-                <input type="range" id="temperatureSlider" min="2000" max="10000" value="6500" step="100">
-            </div>
-            <div class="slider-container">
-                <label for="tintSlider">Tint (Green-Magenta):</label>
-                <input type="range" id="tintSlider" min="-100" max="100" value="0" step="1">
-            </div>
-            <button id="applyBtn">Apply Calibration</button>
-        </div>
         <button id="captureBtn" disabled>Capture Photo</button>
     </div>
     <div id="results">
         <h2>Results</h2>
         <div class="image-container">
-            <div>
-                <p>Original</p>
-                <img id="originalImg">
-            </div>
-            <div>
-                <p>Calibrated</p>
-                <img id="calibratedImg">
-            </div>
+            <img id="originalImg" style="max-width: 45%; border: 1px solid #ccc; border-radius: 5px;">
+            <img id="calibratedImg" style="max-width: 45%; border: 1px solid #ccc; border-radius: 5px;">
         </div>
-        <button id="downloadBtn" style="display: none;">Download Calibrated Image</button>
+        <button id="downloadBtn" style="display: none; background-color: #2196F3; padding: 12px 20px; font-size: 16px; margin: 10px; cursor: pointer; color: white; border: none; border-radius: 5px;">Download Calibrated Image</button>
     </div>
 
     <script>
@@ -132,16 +94,13 @@
         const calibratedImg = document.getElementById('calibratedImg');
         const downloadBtn = document.getElementById('downloadBtn');
         const calibrationCircle = document.getElementById('calibrationCircle');
-        const sliders = document.getElementById('sliders');
-        const temperatureSlider = document.getElementById('temperatureSlider');
-        const tintSlider = document.getElementById('tintSlider');
-        const applyBtn = document.getElementById('applyBtn');
+        const sampleSizeSpan = document.getElementById('sampleSize');
+        const rgbValuesSpan = document.getElementById('rgbValues');
+        const brightnessCheckSpan = document.getElementById('brightnessCheck');
 
         let stream = null;
         let isCalibrated = false;
         let whiteBalanceGains = [1, 1, 1];
-        let temperature = 6500;
-        let tint = 0;
 
         // Show calibration circle
         cameraView.addEventListener('click', (e) => {
@@ -176,11 +135,13 @@
             const rect = cameraView.getBoundingClientRect();
             const circleX = parseInt(calibrationCircle.style.left) - rect.left;
             const circleY = parseInt(calibrationCircle.style.top) - rect.top;
-            const circleRadius = 50;
+            const circleRadius = 75;
             const startX = Math.max(0, circleX - circleRadius);
             const startY = Math.max(0, circleY - circleRadius);
             const endX = Math.min(canvas.width, circleX + circleRadius);
             const endY = Math.min(canvas.height, circleY + circleRadius);
+
+            sampleSizeSpan.textContent = `${(endX - startX)}x${(endY - startY)} pixels`;
 
             let rValues = [], gValues = [], bValues = [];
             for (let y = startY; y < endY; y++) {
@@ -200,26 +161,16 @@
             const medianG = gValues[Math.floor(gValues.length / 2)];
             const medianB = bValues[Math.floor(bValues.length / 2)];
 
-            // Sanity check: ensure the reference is bright enough
-            if (medianR < 200 || medianG < 200 || medianB < 200) {
-                alert("White reference is too dark. Use a brighter white object or better lighting.");
-                return;
-            }
+            rgbValuesSpan.textContent = `R: ${medianR}, G: ${medianG}, B: ${medianB}`;
 
-            // Calculate initial white balance gains
+            // Bypass brightness check for debugging
+            // Remove this block for production
+            brightnessCheckSpan.textContent = "Bypassed for debugging";
             const avg = (medianR + medianG + medianB) / 3;
             whiteBalanceGains = [avg / medianR, avg / medianG, avg / medianB];
-            sliders.style.display = 'block';
-            calibrateBtn.disabled = true;
-        });
-
-        // Apply user-adjusted calibration
-        applyBtn.addEventListener('click', () => {
-            temperature = parseInt(temperatureSlider.value);
-            tint = parseInt(tintSlider.value);
             isCalibrated = true;
             captureBtn.disabled = false;
-            alert("Calibration set! Now capture the photo.");
+            alert(`Calibrated with median RGB (${medianR}, ${medianG}, ${medianB}). Now capture the photo.`);
         });
 
         // Capture photo
@@ -230,33 +181,15 @@
             const originalData = context.getImageData(0, 0, canvas.width, canvas.height);
             originalImg.src = canvas.toDataURL('image/png');
 
-            // Apply white balance and user adjustments
+            // Apply white balance correction
             const correctedData = context.createImageData(canvas.width, canvas.height);
             const originalPixels = originalData.data;
             const correctedPixels = correctedData.data;
 
-            // Simple temperature and tint adjustment
-            const tempFactor = temperature / 6500;
-            const tintFactor = 1 + (tint / 100);
-
             for (let i = 0; i < originalPixels.length; i += 4) {
-                let r = originalPixels[i] * whiteBalanceGains[0];
-                let g = originalPixels[i + 1] * whiteBalanceGains[1];
-                let b = originalPixels[i + 2] * whiteBalanceGains[2];
-
-                // Apply temperature (cool/warm)
-                if (tempFactor > 1) {
-                    r *= tempFactor;
-                } else {
-                    b /= tempFactor;
-                }
-
-                // Apply tint (green/magenta)
-                g *= tintFactor;
-
-                correctedPixels[i] = Math.min(255, r);
-                correctedPixels[i + 1] = Math.min(255, g);
-                correctedPixels[i + 2] = Math.min(255, b);
+                correctedPixels[i] = Math.min(255, originalPixels[i] * whiteBalanceGains[0]);
+                correctedPixels[i + 1] = Math.min(255, originalPixels[i + 1] * whiteBalanceGains[1]);
+                correctedPixels[i + 2] = Math.min(255, originalPixels[i + 2] * whiteBalanceGains[2]);
                 correctedPixels[i + 3] = originalPixels[i + 3];
             }
 
