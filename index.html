@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Color-True Camera</title>
+  <title>Color-True Camera (Simplified)</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -12,19 +12,11 @@
     <video id="video" autoplay playsinline></video>
     <canvas id="previewCanvas"></canvas>
 
-    <!-- Overlay: guides + instructions -->
+    <!-- Overlay: status + sample box -->
     <div id="overlay">
-      <div id="faceGuide">
-        <div class="eyeLine" style="top:40%"></div>
-        <div class="eyeLine" style="top:48%"></div>
-        <div class="faceBox"></div>
-      </div>
-      <!-- Collarbone reference pointer (thumb-reachable in selfie mode) -->
-      <div id="pointer" title="Hold white/neutral here at collarbone"></div>
-      <!-- Tap ROI preview -->
+      <div id="statusBanner">Tap the white patch to calibrate</div>
       <div id="sampleBox"></div>
-      <!-- Status banner -->
-      <div id="statusBanner">Tap the white patch to lock</div>
+      <div id="focusWarn" aria-live="polite"></div>
     </div>
 
     <!-- Top controls -->
@@ -53,7 +45,7 @@
         <canvas id="original"></canvas>
       </div>
       <div class="pair">
-        <div class="label">Calibrated (white-balanced + CCM)</div>
+        <div class="label">Calibrated</div>
         <canvas id="corrected"></canvas>
         <button id="download">Download calibrated</button>
       </div>
