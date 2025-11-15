@@ -8,41 +8,74 @@
         body {
             font-family: Arial, sans-serif;
             text-align: center;
-            margin: 20px;
+            margin: 10px;
+            background-color: #f5f5f5;
         }
         #cameraView {
             width: 100%;
             max-width: 500px;
-            border: 1px solid #ccc;
+            border: 2px solid #333;
             margin: 10px auto;
+            display: block;
+            position: relative;
+        }
+        #calibrationCircle {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border: 2px dashed rgba(255, 0, 0, 0.7);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            display: none;
         }
         #canvas {
             display: none;
         }
         button {
-            padding: 10px 20px;
+            padding: 12px 20px;
             font-size: 16px;
             margin: 10px;
             cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:disabled {
+            background-color: #cccccc;
         }
         #results {
             margin-top: 20px;
+            background-color: white;
+            padding: 10px;
+            border-radius: 5px;
         }
         .image-container {
             display: flex;
             justify-content: space-around;
             margin: 20px 0;
+            flex-wrap: wrap;
         }
         .image-container img {
             max-width: 45%;
             border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        #downloadBtn {
+            background-color: #2196F3;
         }
     </style>
 </head>
 <body>
     <h1>Color Calibration App</h1>
-    <p>Hold a white reference in the frame and tap it to calibrate.</p>
-    <video id="cameraView" autoplay playsinline></video>
+    <p>Hold a white reference in the frame and tap the red circle to calibrate.</p>
+    <div style="position: relative;">
+        <video id="cameraView" autoplay playsinline></video>
+        <div id="calibrationCircle"></div>
+    </div>
     <canvas id="canvas"></canvas>
     <div>
         <button id="calibrateBtn">Tap White Reference</button>
@@ -72,10 +105,21 @@
         const originalImg = document.getElementById('originalImg');
         const calibratedImg = document.getElementById('calibratedImg');
         const downloadBtn = document.getElementById('downloadBtn');
+        const calibrationCircle = document.getElementById('calibrationCircle');
 
         let stream = null;
         let isCalibrated = false;
-        let whiteBalanceGains = [1, 1, 1]; // RGB gains
+        let whiteBalanceGains = [1, 1, 1];
+
+        // Show calibration circle
+        cameraView.addEventListener('click', (e) => {
+            const rect = cameraView.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            calibrationCircle.style.left = `${x}px`;
+            calibrationCircle.style.top = `${y}px`;
+            calibrationCircle.style.display = 'block';
+        });
 
         // Access the camera
         navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
@@ -85,6 +129,7 @@
             })
             .catch((err) => {
                 console.error("Error accessing camera:", err);
+                alert("Could not access the camera. Please ensure permissions are granted.");
             });
 
         // Calibrate white balance
@@ -95,31 +140,43 @@
             const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
 
-            // Simple white balance: average the tapped region (center 10% of the image)
-            let r = 0, g = 0, b = 0, count = 0;
-            const regionSize = 0.1;
-            const startX = Math.floor(canvas.width * (0.5 - regionSize / 2));
-            const startY = Math.floor(canvas.height * (0.5 - regionSize / 2));
-            const endX = Math.floor(canvas.width * (0.5 + regionSize / 2));
-            const endY = Math.floor(canvas.height * (0.5 + regionSize / 2));
+            // Use the center of the calibration circle as the reference
+            const rect = cameraView.getBoundingClientRect();
+            const circleX = parseInt(calibrationCircle.style.left) - rect.left;
+            const circleY = parseInt(calibrationCircle.style.top) - rect.top;
+            const circleRadius = 50;
+            const startX = Math.max(0, circleX - circleRadius);
+            const startY = Math.max(0, circleY - circleRadius);
+            const endX = Math.min(canvas.width, circleX + circleRadius);
+            const endY = Math.min(canvas.height, circleY + circleRadius);
 
+            let rValues = [], gValues = [], bValues = [];
             for (let y = startY; y < endY; y++) {
                 for (let x = startX; x < endX; x++) {
                     const i = (y * canvas.width + x) * 4;
-                    r += data[i];
-                    g += data[i + 1];
-                    b += data[i + 2];
-                    count++;
+                    rValues.push(data[i]);
+                    gValues.push(data[i + 1]);
+                    bValues.push(data[i + 2]);
                 }
             }
 
-            r /= count;
-            g /= count;
-            b /= count;
+            // Use median to reduce noise
+            rValues.sort((a, b) => a - b);
+            gValues.sort((a, b) => a - b);
+            bValues.sort((a, b) => a - b);
+            const medianR = rValues[Math.floor(rValues.length / 2)];
+            const medianG = gValues[Math.floor(gValues.length / 2)];
+            const medianB = bValues[Math.floor(bValues.length / 2)];
+
+            // Sanity check: ensure the reference is bright enough
+            if (medianR < 200 || medianG < 200 || medianB < 200) {
+                alert("White reference is too dark. Use a brighter white object or better lighting.");
+                return;
+            }
 
             // Calculate white balance gains
-            const avg = (r + g + b) / 3;
-            whiteBalanceGains = [avg / r, avg / g, avg / b];
+            const avg = (medianR + medianG + medianB) / 3;
+            whiteBalanceGains = [avg / medianR, avg / medianG, avg / medianB];
             isCalibrated = true;
             captureBtn.disabled = false;
             alert("Calibrated! Now capture the photo.");
