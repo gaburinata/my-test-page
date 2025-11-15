@@ -8,50 +8,54 @@
 </head>
 <body>
   <div id="app">
-    <!-- Live camera preview -->
+    <!-- Live preview -->
     <video id="video" autoplay playsinline></video>
-    <!-- Canvas used for live drawing and capture -->
-    <canvas id="canvas"></canvas>
+    <canvas id="previewCanvas"></canvas>
 
-    <!-- Guidance overlay: face frame + eye lines + pointer for white reference -->
+    <!-- Overlay: guides + instructions -->
     <div id="overlay">
       <div id="faceGuide">
         <div class="eyeLine" style="top:40%"></div>
         <div class="eyeLine" style="top:48%"></div>
         <div class="faceBox"></div>
       </div>
-      <!-- Pointer shows suggested white reference area (thumb-reachable in selfie mode) -->
-      <div id="pointer" title="Hold your white reference here"></div>
+      <!-- Collarbone reference pointer (thumb-reachable in selfie mode) -->
+      <div id="pointer" title="Hold white/neutral here at collarbone"></div>
+      <!-- Tap ROI preview -->
+      <div id="sampleBox"></div>
+      <!-- Status banner -->
+      <div id="statusBanner">Tap the white patch to lock</div>
     </div>
 
-    <!-- Top fixed UI: camera select, hint, capture, download -->
-    <div id="ui">
+    <!-- Top controls -->
+    <div id="uiTop">
       <div class="controls">
         <select id="cameraSelect" aria-label="Select camera">
           <option value="user" selected>Front camera</option>
           <option value="environment">Rear camera</option>
         </select>
-        <button id="capture">Capture</button>
-        <button id="download">Download</button>
+        <div id="activeCam">Active: Front</div>
       </div>
-      <div id="hint">
-        Tap the white patch to lock. Keep face inside the oval. Align eyes with the lines.
-      </div>
-      <div id="activeCam">Active: Front</div>
+    </div>
+
+    <!-- Bottom controls (thumb-reachable) -->
+    <div id="uiBottom">
+      <button id="capture">Capture</button>
     </div>
 
     <!-- Lock indicator -->
     <div id="lockIndicator">LOCKED</div>
 
-    <!-- Results area (appears after capture) -->
+    <!-- Results strip -->
     <div id="result">
       <div class="pair">
-        <div class="label">Original</div>
+        <div class="label">Original (cropped to head + lower neck)</div>
         <canvas id="original"></canvas>
       </div>
       <div class="pair">
-        <div class="label">Calibrated</div>
+        <div class="label">Calibrated (white-balanced + CCM)</div>
         <canvas id="corrected"></canvas>
+        <button id="download">Download calibrated</button>
       </div>
     </div>
   </div>
