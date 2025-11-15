@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Color-True Camera (Simplified)</title>
+  <title>Color-True Camera (Pro)</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -12,10 +12,11 @@
     <video id="video" autoplay playsinline></video>
     <canvas id="previewCanvas"></canvas>
 
-    <!-- Overlay: status + sample box -->
+    <!-- Overlay: status + sample box + warnings -->
     <div id="overlay">
       <div id="statusBanner">Tap the white patch to calibrate</div>
       <div id="sampleBox"></div>
+      <div id="warnBox"></div>
       <div id="focusWarn" aria-live="polite"></div>
     </div>
 
@@ -26,6 +27,10 @@
           <option value="user" selected>Front camera</option>
           <option value="environment">Rear camera</option>
         </select>
+        <label class="toggle">
+          <input type="checkbox" id="previewToggle" />
+          <span>Live preview (calibrated)</span>
+        </label>
         <div id="activeCam">Active: Front</div>
       </div>
     </div>
