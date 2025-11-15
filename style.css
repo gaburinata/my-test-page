@@ -8,6 +8,67 @@ video, #previewCanvas {
   position:absolute; top:0; left:0; width:100%; height:100%;
   object-fit:cover;
 }
+body { margin:0; background:#000; color:#fff; font-family:sans-serif; }
+#app { position:relative; width:100vw; height:100vh; overflow:hidden; }
+video, #previewCanvas {
+  position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover;
+}
+#overlay { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+#statusBanner {
+  position:absolute; top:8px; left:50%; transform:translateX(-50%);
+  background:rgba(10,10,10,0.75); border:1px solid #333; border-radius:12px;
+  padding:8px 12px; font-size:14px; text-align:center; z-index:20;
+}
+#sampleBox {
+  position:absolute; border:2px solid #ff0; border-radius:8px;
+  display:none; width:100px; height:100px;
+  box-shadow:0 0 12px rgba(255,255,0,0.5);
+}
+#warnBox, #focusWarn {
+  position:absolute; top:40px; left:50%; transform:translateX(-50%);
+  font-size:13px; padding:6px 10px; border-radius:10px; z-index:20;
+}
+#warnBox {
+  background:rgba(60,40,0,0.6); border:1px solid #775; color:#ffd75e; display:none;
+}
+#focusWarn {
+  background:rgba(30,0,0,0.6); border:1px solid #551; color:#ff6565; display:none;
+}
+#uiTop {
+  position:absolute; top:100px; left:50%; transform:translateX(-50%);
+  display:flex; gap:12px; z-index:20; width:min(760px, 94vw);
+}
+.controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+select {
+  padding:8px 12px; font-size:14px; border-radius:10px;
+  border:1px solid #333; background:#222; color:#fff;
+}
+.toggle { display:flex; gap:8px; align-items:center; font-size:14px; color:#bbb; }
+.toggle input { transform:scale(1.2); }
+#activeCam { font-size:12px; color:#bbb; }
+#uiBottom {
+  position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+  z-index:20;
+}
+button {
+  padding:12px 18px; font-size:18px; border:none; border-radius:999px;
+  background:#0af; color:#000; font-weight:800;
+  box-shadow:0 6px 18px rgba(0,170,255,0.35);
+}
+button:active { transform:scale(0.98); }
+#lockIndicator {
+  position:absolute; top:132px; left:50%; transform:translateX(-50%);
+  background:#0f0; color:#000; padding:6px 12px; border-radius:12px; display:none; font-weight:700; z-index:20;
+}
+#result {
+  position:absolute; bottom:0; left:0; width:100%;
+  background:#111; border-top:1px solid #222;
+  display:none; grid-template-columns:1fr 1fr; gap:12px; padding:12px;
+}
+.pair { display:flex; flex-direction:column; align-items:center; gap:8px; }
+.pair .label { font-size:12px; color:#bbb; }
+#result canvas { width:95%; max-width:560px; border:1px solid #222; border-radius:8px; background:#000; }
+#previewCanvas { pointer-events:auto; }
 
 /* Overlay */
 #overlay { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
