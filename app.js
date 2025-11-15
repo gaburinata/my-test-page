@@ -19,6 +19,7 @@ const warnBox = document.getElementById('warnBox');
 const focusWarn = document.getElementById('focusWarn');
 const previewToggle = document.getElementById('previewToggle');
 const startBtn = document.getElementById('start');
+const startCamBtn = document.getElementById('startCam');
 
 let w = 0, h = 0;
 let gains = { r:1, g:1, b:1 };
@@ -27,17 +28,22 @@ let countdownTimer = null;
 let livePreview = false;
 let initialized = false;
 
-// Gentle CCM (replace with fitted matrix from your colorimeter pairs)
+// Gentle CCM (replace with fitted matrix from your colorimeter pairs for near-perfect match)
 const CCM = [
   [1.02, -0.03,  0.01],
   [-0.02,  1.01, 0.01],
   [0.01, -0.01,  1.02]
 ];
 
+// Init on load, but provide Start Camera button for user gesture (mobile autoplay)
 init();
 
-// Initialize camera correctly and wait for metadata to avoid black screen
-async function init() {
+startCamBtn.addEventListener('click', () => {
+  init(true);
+});
+
+// Initialize camera
+async function init(fromButton = false) {
   stopStream();
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -46,10 +52,14 @@ async function init() {
     });
     video.srcObject = stream;
 
-    // Ensure iOS autoplay works: muted + play after user gesture fallback
-    await video.play().catch(() => { /* some browsers need a gesture; we keep UI visible */ });
+    // Try to play (muted helps). If blocked, a user gesture (Start camera) will fix it.
+    if (fromButton) {
+      await video.play().catch(()=>{});
+    } else {
+      await video.play().catch(()=>{});
+    }
 
-    // Wait for actual dimensions
+    // Wait for metadata to get real dimensions
     await new Promise(res => {
       if (video.readyState >= 1) return res();
       video.addEventListener('loadedmetadata', () => res(), { once: true });
@@ -58,12 +68,14 @@ async function init() {
     w = video.videoWidth || 1280;
     h = video.videoHeight || 720;
 
+    // Size canvases
     previewCanvas.width = w; previewCanvas.height = h;
     original.width = w; original.height = h;
     corrected.width = w; corrected.height = h;
 
+    // UI reset
     activeCamLabel.textContent = `Active: ${currentFacingMode === 'user' ? 'Front' : 'Rear'}`;
-    statusBanner.textContent = 'Press Start or tap a white patch to calibrate';
+    statusBanner.textContent = 'Press Start (auto) or tap a white patch to calibrate';
     lockIndicator.style.display = 'none';
     sampleBox.style.display = 'none';
     warnBox.style.display = 'none';
@@ -73,18 +85,22 @@ async function init() {
     initialized = true;
     requestAnimationFrame(drawPreview);
 
-    // Best-effort focus/zoom constraints
+    // Best-effort constraints (some devices ignore these)
     const track = stream.getVideoTracks()[0];
     const caps = track.getCapabilities?.() || {};
-    const settings = {};
-    if (caps.focusMode && caps.focusMode.includes('continuous')) settings.focusMode = 'continuous';
-    if (caps.zoom) settings.zoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min, (caps.zoom.min + caps.zoom.max) / 2));
-    if (caps.focusDistance) settings.focusDistance = Math.min(caps.focusDistance.max, Math.max(caps.focusDistance.min, (caps.focusDistance.min + caps.focusDistance.max) / 2));
-    if (Object.keys(settings).length) {
-      track.applyConstraints({ advanced: [settings] }).catch(()=>{});
+    const adv = [];
+    if (caps.focusMode && caps.focusMode.includes('continuous')) adv.push({ focusMode: 'continuous' });
+    if (caps.zoom) {
+      const midZoom = (caps.zoom.min + caps.zoom.max) / 2;
+      adv.push({ zoom: Math.min(caps.zoom.max, Math.max(caps.zoom.min, midZoom)) });
     }
+    if (caps.focusDistance) {
+      const midDist = (caps.focusDistance.min + caps.focusDistance.max) / 2;
+      adv.push({ focusDistance: Math.min(caps.focusDistance.max, Math.max(caps.focusDistance.min, midDist)) });
+    }
+    if (adv.length) track.applyConstraints({ advanced: adv }).catch(()=>{});
   } catch (err) {
-    statusBanner.textContent = 'Camera access error. Check permissions and HTTPS.';
+    statusBanner.textContent = 'Camera access error. Ensure HTTPS and allow permissions.';
   }
 }
 
@@ -95,7 +111,7 @@ function stopStream() {
   }
 }
 
-// Live preview
+// Live preview loop
 function drawPreview() {
   if (!initialized) return requestAnimationFrame(drawPreview);
   if (!livePreview) {
@@ -110,8 +126,8 @@ function drawPreview() {
   requestAnimationFrame(drawPreview);
 }
 
-// sRGB <-> linear
-function toLin(c) { c = c/255; return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
+// sRGB <-> linear helpers
+function toLin(c){ c=c/255; return c<=0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
 function toSRGB(l){ return l<=0.0031308 ? l*12.92 : 1.055*Math.pow(l,1/2.4)-0.055; }
 
 // Tone shaping
@@ -134,31 +150,29 @@ function isBlurry() {
   const cy = Math.round((h - ch) / 2);
   const img = pctx.getImageData(cx, cy, cw, ch);
   const gray = new Float32Array(cw * ch);
-  for (let i = 0, j = 0; i < img.data.length; i += 4, j++) {
-    gray[j] = 0.2126 * img.data[i] + 0.7152 * img.data[i+1] + 0.0722 * img.data[i+2];
+  for (let i=0,j=0;i<img.data.length;i+=4,j++){
+    gray[j] = 0.2126*img.data[i] + 0.7152*img.data[i+1] + 0.0722*img.data[i+2];
   }
-  let sum = 0, sumSq = 0, n = 0;
-  const idx = (x,y) => y * cw + x;
-  for (let y = 1; y < ch - 1; y++) {
-    for (let x = 1; x < cw - 1; x++) {
-      const lap =
-        -1*gray[idx(x-1,y-1)] + -1*gray[idx(x,y-1)] + -1*gray[idx(x+1,y-1)] +
-        -1*gray[idx(x-1,y)]   +  8*gray[idx(x,y)]   + -1*gray[idx(x+1,y)]   +
-        -1*gray[idx(x-1,y+1)] + -1*gray[idx(x,y+1)] + -1*gray[idx(x+1,y+1)];
+  let sum=0,sumSq=0,n=0;
+  const idx = (x,y) => y*cw + x;
+  for (let y=1;y<ch-1;y++){
+    for (let x=1;x<cw-1;x++){
+      const lap = -1*gray[idx(x-1,y-1)] + -1*gray[idx(x,y-1)] + -1*gray[idx(x+1,y-1)]
+                + -1*gray[idx(x-1,y)]   +  8*gray[idx(x,y)]   + -1*gray[idx(x+1,y)]
+                + -1*gray[idx(x-1,y+1)] + -1*gray[idx(x,y+1)] + -1*gray[idx(x+1,y+1)];
       sum += lap; sumSq += lap*lap; n++;
     }
   }
-  const mean = sum / n;
-  const varL = (sumSq / n) - mean * mean;
+  const mean = sum/n;
+  const varL = (sumSq/n) - mean*mean;
   return varL < 2500;
 }
 
-// Patch validation
+// Patch validation: brightness, neutrality, texture
 function validatePatch(rMean, gMean, bMean, rVar, gVar, bVar) {
   const L = 0.2126*rMean + 0.7152*gMean + 0.0722*bMean;
   if (L < 0.60) return { ok:false, msg:'Patch too dim. Use brighter, even light.' };
   if (L > 0.80) return { ok:false, msg:'Patch overexposed. Reduce glare or move slightly.' };
-  // Neutrality: chroma vs luminance
   const chroma = Math.abs(rMean - gMean) + Math.abs(gMean - bMean) + Math.abs(bMean - rMean);
   if (chroma > 0.06) return { ok:false, msg:'Patch not neutral. Use matte white or 18% gray.' };
   const varAvg = (rVar + gVar + bVar)/3;
@@ -180,7 +194,7 @@ function meanVarRGBLinear(img) {
   return { rMean:rm, gMean:gm, bMean:bm, rVar:rv, gVar:gv, bVar:bv };
 }
 
-// Process pixels: WB + CCM + tone shaping + red taming
+// Processing: WB + CCM + tone shaping + red taming
 function processPixels(src, dst) {
   for (let i=0; i<src.length; i+=4) {
     let rl = toLin(src[i])     * gains.r;
@@ -206,7 +220,7 @@ function processPixels(src, dst) {
   }
 }
 
-// Auto mode: start -> 3s -> auto-detect neutral patch -> calibrate -> capture
+// Auto mode: delay -> auto-detect neutral -> calibrate -> capture
 startBtn.addEventListener('click', async () => {
   if (!initialized) return;
   statusBanner.textContent = 'Position phone. Capturing in 3…';
@@ -223,19 +237,16 @@ startBtn.addEventListener('click', async () => {
 });
 
 async function autoCalibrateAndCapture() {
-  // Downsample and scan for neutral bright patches
   const gridW = 40, gridH = 40;
   const small = new OffscreenCanvas(gridW, gridH);
   const sctx = small.getContext('2d');
   sctx.drawImage(video, 0, 0, gridW, gridH);
   const data = sctx.getImageData(0,0,gridW,gridH).data;
 
-  // Evaluate candidate 6x6 patches across grid
   let best = null;
   const patchSize = 6;
   for (let y=0; y<=gridH-patchSize; y+=3) {
     for (let x=0; x<=gridW-patchSize; x+=3) {
-      // compute mean/var over patch
       let r=0,g=0,b=0,n=0;
       for (let py=0; py<patchSize; py++){
         for (let px=0; px<patchSize; px++){
@@ -257,18 +268,15 @@ async function autoCalibrateAndCapture() {
       const val = validatePatch(r, g, b, rv, gv, bv);
       if (val.ok) {
         const L = 0.2126*r + 0.7152*g + 0.0722*b;
-        // prefer brighter within range and lowest variance
-        const score = L - (rv+gv+bv);
-        if (!best || score > best.score) {
-          best = { x, y, r, g, b, score };
-        }
+        const score = L - (rv+gv+bv); // prefer bright and smooth
+        if (!best || score > best.score) best = { x, y, r, g, b, score };
       }
     }
   }
 
   if (!best) {
     warnBox.style.display = 'block';
-    warnBox.textContent = 'No neutral white found. Tap your white patch to calibrate or adjust lighting.';
+    warnBox.textContent = 'No neutral white found. Tap your white patch or adjust lighting.';
     statusBanner.textContent = 'Tap a white patch to calibrate';
     return;
   }
@@ -339,16 +347,15 @@ function clearCountdown() {
   }
 }
 
-// Capture, crop, correct, show
+// Capture and show results
 function captureFrame() {
-  // Blur warning (still capture)
   const blurry = isBlurry();
   focusWarn.style.display = blurry ? 'block' : 'none';
   focusWarn.textContent = blurry ? 'Focus soft. Adjust distance or hold steadier.' : '';
 
   octx.drawImage(video, 0, 0, w, h);
 
-  // Crop: tight head + hair + lower neck/clavicle
+  // Crop: head + hair + lower neck/clavicle (consistent, not face-aware yet)
   const crop = {
     x: Math.round(w * 0.10),
     y: Math.round(h * 0.12),
@@ -380,7 +387,7 @@ function captureFrame() {
 // Manual capture
 captureBtn.addEventListener('click', captureFrame);
 
-// Download calibrated image
+// Download calibrated
 downloadBtn.addEventListener('click', () => {
   corrected.toBlob((blob) => {
     const a = document.createElement('a');
@@ -395,11 +402,11 @@ downloadBtn.addEventListener('click', () => {
 cameraSelect.addEventListener('change', (e) => {
   currentFacingMode = e.target.value;
   activeCamLabel.textContent = `Active: ${currentFacingMode === 'user' ? 'Front' : 'Rear'}`;
-  init();
+  init(true); // prompt user to start camera again if needed
 });
 
 // Live preview toggle
 previewToggle.addEventListener('change', (e) => {
   livePreview = e.target.checked;
-  statusBanner.textContent = livePreview ? 'Live preview ON (calibrated)' : 'Press Start or tap a white patch to calibrate';
+  statusBanner.textContent = livePreview ? 'Live preview ON (calibrated)' : 'Press Start (auto) or tap a white patch to calibrate';
 });
