@@ -1,27 +1,25 @@
-// ... (initialization code unchanged)
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const startBtn = document.getElementById('startCam');
 
-function captureFrame() {
-  const blurry = isBlurry();
-  focusWarn.style.display = blurry ? 'block' : 'none';
-  focusWarn.textContent = blurry ? 'Focus soft. Adjust distance or hold steadier.' : '';
+startBtn.addEventListener('click', async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+    await video.play();
 
-  // Draw full frame
-  octx.drawImage(video, 0, 0, w, h);
+    video.addEventListener('loadedmetadata', () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      draw();
+    });
+  } catch (err) {
+    console.error('Camera error:', err);
+  }
+});
 
-  // Use full frame (no crop)
-  const imgFull = octx.getImageData(0, 0, w, h);
-
-  original.width = w; original.height = h;
-  corrected.width = w; corrected.height = h;
-
-  octx.putImageData(imgFull, 0, 0);
-
-  const out = new ImageData(w, h);
-  processPixels(imgFull.data, out.data);
-  cctx.putImageData(out, 0, 0);
-
-  document.getElementById('result').style.display = 'grid';
-  statusBanner.textContent = 'Captured';
-  sampleBox.style.display = 'none';
-  lockIndicator.style.display = 'none';
+function draw() {
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  requestAnimationFrame(draw);
 }
