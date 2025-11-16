@@ -1,26 +1,58 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Camera Test</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Color-True Camera (Auto Start)</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <button id="startCam">Start Camera</button>
-  <video id="video" autoplay playsinline muted style="width:100%;max-width:600px;"></video>
-  <script>
-    const video = document.getElementById('video');
-    const startBtn = document.getElementById('startCam');
+  <div id="app">
+    <!-- Video is hidden, canvas shows preview -->
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="previewCanvas"></canvas>
 
-    startBtn.addEventListener('click', async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-        await video.play();
-      } catch (err) {
-        console.error('Camera error:', err);
-        alert('Camera access failed: ' + err.message);
-      }
-    });
-  </script>
+    <div id="overlay">
+      <div id="statusBanner">Tap a white patch or press Auto Start</div>
+      <div id="sampleBox"></div>
+      <div id="warnBox"></div>
+      <div id="focusWarn"></div>
+    </div>
+
+    <div id="uiTop">
+      <div class="controls">
+        <select id="cameraSelect">
+          <option value="user">Front camera</option>
+          <option value="environment" selected>Rear camera</option>
+        </select>
+        <label class="toggle">
+          <input type="checkbox" id="previewToggle" />
+          <span>Live preview (calibrated)</span>
+        </label>
+        <button id="start">Auto Start (calibrate + capture)</button>
+        <div id="activeCam">Active: Rear</div>
+      </div>
+    </div>
+
+    <div id="uiBottom">
+      <button id="capture">Capture</button>
+    </div>
+
+    <div id="lockIndicator">LOCKED</div>
+
+    <div id="result">
+      <div class="pair">
+        <div class="label">Original (full frame)</div>
+        <canvas id="original"></canvas>
+      </div>
+      <div class="pair">
+        <div class="label">Calibrated</div>
+        <canvas id="corrected"></canvas>
+        <button id="download">Download calibrated</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
 </body>
 </html>
