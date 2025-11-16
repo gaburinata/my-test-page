@@ -3,24 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Color-True Camera (Pro)</title>
+  <title>Color-True Camera (No Zoom)</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="app">
-    <!-- Muted is required for autoplay on mobile browsers -->
     <video id="video" autoplay playsinline muted></video>
     <canvas id="previewCanvas"></canvas>
 
-    <!-- Overlay UI -->
     <div id="overlay">
-      <div id="statusBanner">Press Start Camera, then Start (auto), or tap a white patch</div>
+      <div id="statusBanner">Press Start (auto) or tap a white patch</div>
       <div id="sampleBox"></div>
       <div id="warnBox"></div>
       <div id="focusWarn"></div>
     </div>
 
-    <!-- Top controls -->
     <div id="uiTop">
       <div class="controls">
         <button id="startCam">Start camera</button>
@@ -37,18 +34,15 @@
       </div>
     </div>
 
-    <!-- Bottom shutter -->
     <div id="uiBottom">
       <button id="capture">Capture</button>
     </div>
 
-    <!-- Lock indicator -->
     <div id="lockIndicator">LOCKED</div>
 
-    <!-- Results -->
     <div id="result">
       <div class="pair">
-        <div class="label">Original (cropped)</div>
+        <div class="label">Original (full frame)</div>
         <canvas id="original"></canvas>
       </div>
       <div class="pair">
