@@ -1,58 +1,13 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Color-True Camera (No Zoom)</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8">
+  <title>Camera Test</title>
 </head>
 <body>
-  <div id="app">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="previewCanvas"></canvas>
-
-    <div id="overlay">
-      <div id="statusBanner">Press Start (auto) or tap a white patch</div>
-      <div id="sampleBox"></div>
-      <div id="warnBox"></div>
-      <div id="focusWarn"></div>
-    </div>
-
-    <div id="uiTop">
-      <div class="controls">
-        <button id="startCam">Start camera</button>
-        <select id="cameraSelect">
-          <option value="user">Front camera</option>
-          <option value="environment" selected>Rear camera</option>
-        </select>
-        <label class="toggle">
-          <input type="checkbox" id="previewToggle" />
-          <span>Live preview (calibrated)</span>
-        </label>
-        <button id="start">Start (auto mode)</button>
-        <div id="activeCam">Active: Rear</div>
-      </div>
-    </div>
-
-    <div id="uiBottom">
-      <button id="capture">Capture</button>
-    </div>
-
-    <div id="lockIndicator">LOCKED</div>
-
-    <div id="result">
-      <div class="pair">
-        <div class="label">Original (full frame)</div>
-        <canvas id="original"></canvas>
-      </div>
-      <div class="pair">
-        <div class="label">Calibrated</div>
-        <canvas id="corrected"></canvas>
-        <button id="download">Download calibrated</button>
-      </div>
-    </div>
-  </div>
-
+  <button id="startCam">Start Camera</button>
+  <video id="video" autoplay playsinline muted style="width:100%;max-width:600px;"></video>
+  <canvas id="canvas"></canvas>
   <script src="app.js"></script>
 </body>
 </html>
