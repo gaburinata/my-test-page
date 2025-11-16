@@ -7,7 +7,20 @@
 <body>
   <button id="startCam">Start Camera</button>
   <video id="video" autoplay playsinline muted style="width:100%;max-width:600px;"></video>
-  <canvas id="canvas"></canvas>
-  <script src="app.js"></script>
+  <script>
+    const video = document.getElementById('video');
+    const startBtn = document.getElementById('startCam');
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        await video.play();
+      } catch (err) {
+        console.error('Camera error:', err);
+        alert('Camera access failed: ' + err.message);
+      }
+    });
+  </script>
 </body>
 </html>
